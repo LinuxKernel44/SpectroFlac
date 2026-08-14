@@ -80,6 +80,17 @@ keytool -genkeypair -v -keystore spectroflac.jks -alias spectroflac \
 
 Without `keystore.properties` the release build still works, it simply comes out unsigned.
 
+### Publishing a release
+
+Every version ships as a signed APK attached to a GitHub release:
+
+```bash
+scripts/release.sh
+```
+
+It reads `versionName` from `app/build.gradle.kts`, builds and verifies the signature, then creates
+(or updates) the matching `vX.Y.Z` release. Bump `versionCode`/`versionName` before running it.
+
 ## Tests
 
 The decoder is checked against the MD5 that the encoder stored inside each file — the strongest
