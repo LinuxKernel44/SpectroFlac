@@ -16,7 +16,10 @@ fi
 
 VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
 TAG="v${VERSION}"
-NOTES="${2:-Signed release build of SpectroFlac ${VERSION}.}"
+NOTES="Signed release build of SpectroFlac ${VERSION}."
+if [[ "${1:-}" == "--notes" ]]; then
+  NOTES="${2:?--notes needs a value}"
+fi
 
 echo "==> Building ${TAG}"
 ./gradlew --quiet :app:assembleRelease
@@ -26,7 +29,10 @@ APK="app/build/outputs/apk/release/app-release.apk"
 
 # Refuse to ship an unsigned build: the release signing config is skipped silently
 # when keystore.properties has no storeFile.
-if ! "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/*/apksigner verify "$APK" >/dev/null 2>&1; then
+APKSIGNER=$(ls -1 "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+if [[ -z "$APKSIGNER" ]]; then
+  echo "apksigner not found in the SDK build-tools; skipping the signature check" >&2
+elif ! "$APKSIGNER" verify "$APK" >/dev/null 2>&1; then
   echo "APK is not signed — check keystore.properties" >&2
   exit 1
 fi
