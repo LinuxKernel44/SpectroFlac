@@ -62,11 +62,15 @@ class AnalysisQueueTest {
         f.analyzer.hold("a.flac")
         f.queue.enqueue(listOf(file("a.flac"), file("b.flac")))
         f.await("a running") { f.state("a.flac") == ItemState.RUNNING }
+        // RUNNING is set before the coroutine gets to run: wait until the analysis has really begun,
+        // otherwise the cancel may land first and there is nothing inside analyze() to cancel.
+        f.await("the analysis of a to begin") { "content://test/a.flac" in f.analyzer.started }
         val id = f.queue.snapshot.value.items.first { it.name == "a.flac" }.id
         f.queue.cancel(id)
         f.await("b done") { f.state("b.flac") == ItemState.DONE }
         assertNull(f.state("a.flac"))
-        assertTrue("analysis of a should have been cancelled", "content://test/a.flac" in f.analyzer.cancelled)
+        // The cancelled coroutine records its cancellation when it gets to run, which may be after b is done.
+        f.await("the analysis of a to be cancelled") { "content://test/a.flac" in f.analyzer.cancelled }
     }
 
     @Test
@@ -77,6 +81,7 @@ class AnalysisQueueTest {
         f.analyzer.hold("run.flac")
         f.queue.enqueue(listOf(file("run.flac"), file("wait1.flac"), file("wait2.flac")))
         f.await("run running") { f.state("run.flac") == ItemState.RUNNING }
+        f.await("the analysis of run to begin") { "content://test/run.flac" in f.analyzer.started }
         f.queue.cancelAll()
         assertEquals(listOf("done.flac"), f.queue.snapshot.value.items.map { it.name })
         assertFalse(f.queue.snapshot.value.isActive)
