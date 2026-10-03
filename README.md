@@ -677,7 +677,9 @@ https://github.com/LinuxKernel44
 
 ## 📄 License
 
-See [`LICENSE`](LICENSE) for the license applicable to this project.
+Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+You may use, modify, and share SpectroFlac for any noncommercial purpose, provided that every copy keeps the license terms and the `Required Notice:` credit line from [`LICENSE`](LICENSE). Commercial use requires a separate agreement with the author.
 
 ---
 
