@@ -33,7 +33,7 @@ it does.
 - Detection scope the user asked for, all implemented: lossy transcode, upsampled/fake hi-res,
   padded bit depth ("fake 24-bit"), integrity/corruption (MD5 + CRC), clipping/dynamic range.
 - Export: text share + CSV/JSON (user-confirmed "yes" over "text only" or "no export").
-- Delivery: private GitHub repo via `gh`, with signed APKs attached to releases — not just source.
+- Delivery: public GitHub repo (github.com/LinuxKernel44/SpectroFlac) via `gh`, with signed APKs attached to releases — not just source.
   See "Releasing" below.
 
 ## Why the FLAC decoder is hand-written
@@ -141,7 +141,7 @@ lost, no future release can update an existing SpectroFlac install on a device �
 to uninstall and reinstall. It intentionally lives outside the repo; don't try to "fix" that by
 committing it or copying it into a tracked path.
 
-Repo is private (`gh repo create SpectroFlac --private`). Releases carry the signed APK as a
+Repo is **public** (it was created private, later made public). It is licensed under PolyForm Noncommercial 1.0.0 (see `LICENSE`): noncommercial use only, and the `Required Notice:` credit line must be kept — do not swap in a different license without asking. Releases carry the signed APK as a
 binary asset via `gh release create`/`gh release upload`, not just source — that was an explicit
 delivery requirement, not a nice-to-have.
 
