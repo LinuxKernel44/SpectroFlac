@@ -15,8 +15,12 @@ object StereoAnalysis {
     /** The side channel must stop this far below the mid channel's own edge to count. */
     private const val SIDE_GAP_HZ = 1500.0
 
-    /** A narrowing of the stereo image from the mid band to the treble band that is worth reporting. */
-    const val COLLAPSE_DB = 12.0
+    /**
+     * A narrowing of the stereo image from the mid band to the treble band that is worth reporting.
+     * Genuine music does this on its own: a real 17-track lossless album reached 12.2 dB, so the first
+     * threshold (12) raised a false alarm. 20 leaves roughly 8 dB of margin above that.
+     */
+    const val COLLAPSE_DB = 20.0
 
     /**
      * Reduces the running sums of a stereo track (in normalised sample units, N samples per channel)

@@ -96,6 +96,29 @@ file mean those low bits never carried signal — that's `effectiveBitDepth` /
 If you touch the thresholds in `Judge.kt`, **you must re-run `JudgeTest` against real encoder
 output**, not just synthetic signals — see Testing.
 
+### Calibration on real music (2026-10-03)
+
+The thresholds were first calibrated on synthetic noise and then checked against a real 17-track lossless
+album (Bandcamp 16-bit/44.1 kHz FLAC, the user's own purchase — not in the repo) plus 21 lossy transcodes
+made from 60 s excerpts of three of its tracks (MP3 128/192/320/V2, AAC 128, Vorbis q4, Opus 128). Findings
+that changed the code:
+
+- Genuine music: peak-hold top-of-spectrum step 7.6–12.4 dB (one gradual roll-off at 18.8 dB, track 16),
+  average-spectrum step ≤ 12.6 dB, stereo width collapse up to 12.2 dB. `WALL_DB` = 26 has ample margin.
+- **Stereo collapse alone is weak evidence**: the first threshold (12 dB) raised a false alarm on a genuine
+  track, so `COLLAPSE_DB` is now 20 and a collapse-only finding is INFO, never WARNING. A side-channel brick
+  wall below the mid channel's edge is the specific symptom (seen on a real MP3 transcode: side 16.0 kHz vs mid
+  18.6 kHz) and is the only joint-stereo case that rates WARNING.
+- **Peak-hold can be blurred**: an Opus 128 kbps transcode of a loud track had a 23.9 dB peak-hold step because
+  sparse broadband bursts (clipping / decoder overshoot) filled the dead zone, and was rated GENUINE at 96 % —
+  the worst kind of error. `Judge.spectral` now falls back to the *average* spectrum (`MEAN_WALL_DB` = 20,
+  genuine ≤ 12.6, fakes ≥ 25.7) when peak-hold finds no wall. Peak-hold results are unchanged when it does.
+- Vorbis q4 of real music lands at 19.1–19.45 kHz (19.0 kHz on noise); the 19.25–19.9 kHz band lists it.
+
+Caveat: that is **one album** (one artist, one mastering chain) plus transcodes of three tracks. Say so
+rather than overclaiming, and re-check against other genuine material (classical, hi-res, old masters with
+steep low-passes) before loosening anything. Never commit the user's music; keep such tests in the scratchpad.
+
 ### Encoder fingerprints and their limits
 
 `Judge.lossySourceGuess` is a table of measured cut frequencies, not folklore: each band comes from

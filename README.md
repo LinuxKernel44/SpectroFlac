@@ -247,7 +247,7 @@ For this reason, SpectroFlac reports a **confidence value and the measurements b
 Two limits worth knowing:
 
 * **Very high bitrates leave no cut.** AAC 256 kbps and up, LAME V0 and Vorbis q6 and up show no brick wall on a full-band signal, so the spectral test cannot see them. A clean spectrum proves nothing about those.
-* **The fingerprints are calibrated on synthetic noise** through FFmpeg's encoders. Other encoders (Apple, FDK, Fraunhofer) and real music can land elsewhere.
+* **The thresholds are calibrated on a small corpus**: synthetic noise through FFmpeg's encoders, one real lossless album, and lossy transcodes of three of its tracks. On that corpus every genuine file came out genuine and every transcode was caught, but other encoders (Apple, FDK, Fraunhofer) and other kinds of music (classical, hi-res, old masters with steep filters) can land elsewhere.
 
 > **The spectral test is strong evidence, not proof.**
 
@@ -694,7 +694,7 @@ The application exposes the measurements behind the verdict rather than hiding t
 
 ### Ideas
 
-* [ ] Calibrate the fingerprints and the joint-stereo thresholds on real music, not only synthetic noise
+* [ ] Calibrate the fingerprints and thresholds on more real music (one album so far)
 * [ ] Fingerprints for Apple AAC, FDK-AAC and Fraunhofer MP3
 * [ ] Multichannel (5.1 / 7.1) stereo-style analysis
 * [ ] Export the spectrogram as an image

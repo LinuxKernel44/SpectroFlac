@@ -20,6 +20,15 @@ object Judge {
     /** A wall has to drop at least this much to count as an encoder cut rather than a roll-off. */
     private const val WALL_DB = 26.0
 
+    /**
+     * The same test on the average spectrum, used only when the peak-hold spectrum shows no wall.
+     * Sparse broadband bursts (clipping, decoder overshoot) can fill the dead zone above a cut in the
+     * peak-hold spectrum, but they do not move a long-term average. On 20 genuine tracks from a real
+     * lossless album the average-spectrum step never exceeded 12.6 dB; on 21 lossy transcodes of real
+     * music it never fell below 25.7 dB. 20 sits in the middle of that gap.
+     */
+    private const val MEAN_WALL_DB = 20.0
+
     /** Where a spectrum stops: the edge of a brick wall, or else the top of the content. */
     class Edge(
         val cutoffBin: Int,
@@ -35,7 +44,7 @@ object Judge {
      * The step detector, shared by the verdict (on the mono mix) and the joint-stereo test (on the
      * side channel): for every bin, how much louder is the 1.2 kHz below it than the 1.2 kHz above?
      */
-    fun findEdge(peakSpectrumDb: DoubleArray, binHz: Double, nyquist: Double): Edge {
+    fun findEdge(peakSpectrumDb: DoubleArray, binHz: Double, nyquist: Double, wallDb: Double = WALL_DB): Edge {
         val bins = peakSpectrumDb.size
         fun binOf(hz: Double) = (hz / binHz).toInt().coerceIn(0, bins - 1)
         val smooth = smoothDb(peakSpectrumDb, 2)
@@ -68,7 +77,7 @@ object Judge {
             b++
         }
 
-        val hasWall = wallBin > 0 && wallDrop >= WALL_DB
+        val hasWall = wallBin > 0 && wallDrop >= wallDb
         // With no wall to point at, report how far up meaningful content reaches: the highest bin
         // within 75 dB of the loudest one.
         var contentTop = lowBin
@@ -98,7 +107,13 @@ object Judge {
 
     fun spectral(m: AnalysisMeasurements): SpectralInfo {
         val reasoning = mutableListOf<String>()
-        val edge = findEdge(m.peakSpectrumDb, m.binHz, m.nyquist)
+        val peakEdge = findEdge(m.peakSpectrumDb, m.binHz, m.nyquist)
+        val meanEdge = findEdge(m.meanSpectrumDb, m.binHz, m.nyquist, MEAN_WALL_DB)
+        // Fall back to the average spectrum when sparse bursts blur the peak-hold one.
+        val fromMean = !peakEdge.hasWall && meanEdge.hasWall
+        val edge = if (fromMean) {
+            Edge(meanEdge.cutoffBin, true, meanEdge.dropDb, meanEdge.belowDb, meanEdge.aboveDb, peakEdge.peakDb, peakEdge.topFloorDb)
+        } else peakEdge
         val hasWall = edge.hasWall
         val wallDrop = edge.dropDb
         val wallBelow = edge.belowDb
@@ -113,7 +128,10 @@ object Judge {
         reasoning += "Analysed %d FFT windows of %d points (%.1f Hz per bin), keeping the loudest value seen in each bin across the whole track."
             .fmt(m.windowsAnalyzed, m.fftSize, m.binHz)
         reasoning += "Loudest bin %.1f dBFS; level in the top 3%% of the spectrum %.1f dBFS.".fmt(peak, hfFloor)
-        reasoning += if (hasWall) {
+        reasoning += if (fromMean) {
+            "The loudest-value spectrum shows only a %.1f dB step — occasional broadband bursts (clipping or decoder overshoot) fill the space above the cut — but the average spectrum drops %.1f dB at %.0f Hz (%.1f dBFS below it, %.1f dBFS above it)."
+                .fmt(peakEdge.dropDb, wallDrop, cutoffHz, wallBelow, wallAbove)
+        } else if (hasWall) {
             "Sharpest step in the spectrum: %.1f dB at %.0f Hz (%.1f dBFS below it, %.1f dBFS above it)."
                 .fmt(wallDrop, cutoffHz, wallBelow, wallAbove)
         } else {
@@ -164,7 +182,7 @@ object Judge {
             k < 17.0 -> "MP3 128 kbps (LAME default or V5–V6), Vorbis q2 or AAC 96 kbps"
             k < 17.9 -> "MP3 160 kbps (or V4), Vorbis q3 or AAC 128 kbps"
             k < 19.25 -> "MP3 192 kbps (or V2) or Vorbis q4"
-            k < 19.9 -> "MP3 224–256 kbps or AAC 160–192 kbps"
+            k < 19.9 -> "MP3 224–256 kbps, AAC 160–192 kbps or Vorbis q4"
             k < 20.9 -> "Opus at any bitrate, MP3 320 kbps / LAME V0 or Vorbis q5"
             k < 21.8 -> "a high-bitrate lossy source (AAC 320, Vorbis q8+)"
             else -> null
@@ -409,8 +427,10 @@ object Judge {
         }
         jointStereo?.takeIf { it.suspected }?.let { joint ->
             val lossyAlready = verdict == Verdict.FAKE && spectral.hasBrickWall
+            // A side channel with its own brick wall is a specific symptom; a narrowing stereo image
+            // alone is weak evidence (real music does it), so it never rates above INFO.
             findings += Finding(
-                if (lossyAlready) Severity.INFO else Severity.WARNING,
+                if (!lossyAlready && joint.sideBandLimited) Severity.WARNING else Severity.INFO,
                 "Joint-stereo coding artifacts",
                 buildString {
                     if (joint.sideBandLimited) {

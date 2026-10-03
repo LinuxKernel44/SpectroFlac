@@ -29,6 +29,7 @@ class FingerprintTest {
     fun `measured vorbis opus and aac cuts list that encoder`() {
         assertTrue(guess(19_003.0).contains("Vorbis q4"))
         assertTrue(guess(19_184.0).contains("Vorbis q4"))  // same encode at 48 kHz
+        assertTrue(guess(19_434.0).contains("Vorbis q4"))  // Vorbis q4 of real music
         assertTrue(guess(20_370.0).contains("Opus"))
         assertTrue(guess(20_380.0).contains("Opus"))
         assertTrue(guess(17_356.0).contains("AAC 128"))

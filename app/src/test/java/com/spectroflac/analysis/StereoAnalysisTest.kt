@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Random
 import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 /** Feeds synthetic signals through [AudioAnalyzer] and checks the stereo measurements. */
@@ -103,25 +104,48 @@ class StereoAnalysisTest {
     }
 
     @Test
+    fun `an ordinary stereo image is not flagged`() {
+        val common = noise(13, 6000)
+        val diffuseL = noise(14, 3000)
+        val diffuseR = noise(15, 3000)
+        val m = analyse({ common(it) + diffuseL(it) }, { common(it) + diffuseR(it) })
+        assertEquals(false, StereoAnalysis.jointStereo(m)!!.suspected)
+    }
+
+    @Test
     fun `a side channel that stops early is flagged as joint stereo`() {
         // Both channels carry a shared full-band signal, but the diffuse part (what makes the side
         // channel) is low-passed far below it: exactly what a joint-stereo encoder leaves behind.
         val common = noise(8, 6000)
-        val diffuseL = lowPass(noise(9, 6000), 0.08)
-        val diffuseR = lowPass(noise(10, 6000), 0.08)
+        val diffuseL = lowPass(noise(9, 6000), 5_000.0)
+        val diffuseR = lowPass(noise(10, 6000), 5_000.0)
         val m = analyse({ common(it) + diffuseL(it) }, { common(it) + diffuseR(it) })
         val joint = StereoAnalysis.jointStereo(m)
         assertNotNull(joint)
-        assertTrue("side ${joint!!.sideCutoffHz} mid ${joint.midCutoffHz}", joint.suspected)
+        assertTrue("side ${joint!!.sideCutoffHz} mid ${joint.midCutoffHz}", joint.sideBandLimited)
+        assertTrue(joint.suspected)
     }
 
-    /** Crude single-pole low-pass, enough to put a clear step in the spectrum. */
-    private fun lowPass(source: (Int) -> Int, alpha: Double): (Int) -> Int {
-        val out = IntArray(sampleRate * seconds)
-        var y = 0.0
-        for (i in out.indices) {
-            y += alpha * (source(i) - y)
-            out[i] = y.toInt()
+    /** Windowed-sinc FIR low-pass (Blackman): steep enough to leave a real brick wall in the spectrum. */
+    private fun lowPass(source: (Int) -> Int, cutoffHz: Double): (Int) -> Int {
+        val taps = 255
+        val fc = cutoffHz / sampleRate
+        val half = taps / 2
+        val h = DoubleArray(taps) { n ->
+            val x = (n - half).toDouble()
+            val sinc = if (n == half) 2 * fc else sin(2 * PI * fc * x) / (PI * x)
+            val blackman = 0.42 - 0.5 * cos(2 * PI * n / (taps - 1)) + 0.08 * cos(4 * PI * n / (taps - 1))
+            sinc * blackman
+        }
+        val total = sampleRate * seconds
+        val out = IntArray(total)
+        for (i in 0 until total) {
+            var acc = 0.0
+            for (k in 0 until taps) {
+                val idx = i - k
+                if (idx >= 0) acc += h[k] * source(idx)
+            }
+            out[i] = acc.toInt()
         }
         return { out[it] }
     }
