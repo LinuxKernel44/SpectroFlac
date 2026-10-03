@@ -54,8 +54,11 @@ app/src/main/java/com/spectroflac/
 │                   (identifies the real format from magic bytes, incl. ID3-prefixed files),
 │                   FlacDecoder (metadata blocks + full frame/subframe decode), FlacModels
 ├── analysis/       Fft (radix-2), AudioAnalyzer (single-pass streaming measurements: peak-hold
-│                   spectrum, spectrogram preview, clipping, DR, real bit depth), Judge (turns
-│                   measurements into a verdict + human-readable reasoning), FlacAnalyzer
+│                   spectrum, per-channel layers, spectrogram preview + full-resolution
+│                   spectrogram, stereo sums, clipping, DR, real bit depth), Judge (turns
+│                   measurements into a verdict + human-readable reasoning, `findEdge` step
+│                   detector, `lossySourceGuess` fingerprint table), StereoAnalysis (stereo
+│                   statistics, joint-stereo test, spectrum curves), StereoModels, FlacAnalyzer
 │                   (orchestrates decode+analyze for one file), AnalysisReport (the result model)
 ├── data/           Room entity/DAO for local history, JSON (de)serialization of a report
 ├── export/         Exporter — text report, CSV, JSON, share intents
@@ -64,8 +67,10 @@ app/src/main/java/com/spectroflac/
     │               GlassPanel composables + frosted fallback for API < 33 or shader-compile
     │               failure)
     ├── theme/      Dark-only color scheme and typography
-    ├── screens/    HomeScreen, ResultScreen, ListScreens (Batch/History/AnalysisOverlay)
-    ├── components/ Shared building blocks (buttons, cards, spectrogram strip, verdict badge)
+    ├── screens/    HomeScreen, ResultScreen, SpectrogramScreen (interactive: pinch/pan/cursor),
+    │               ListScreens (Batch/History/AnalysisOverlay)
+    ├── components/ Shared building blocks (buttons, cards, spectrogram strip, verdict badge),
+    │               Charts (spectrum chart, correlation timeline, ToggleChip)
     ├── MainActivity.kt   intent handling (VIEW/SEND), screen routing
     └── MainViewModel.kt  state, coroutine-driven analysis, Room wiring
 ```
@@ -90,6 +95,29 @@ file mean those low bits never carried signal — that's `effectiveBitDepth` /
 
 If you touch the thresholds in `Judge.kt`, **you must re-run `JudgeTest` against real encoder
 output**, not just synthetic signals — see Testing.
+
+### Encoder fingerprints and their limits
+
+`Judge.lossySourceGuess` is a table of measured cut frequencies, not folklore: each band comes from
+round-tripping full-band stereo noise through libmp3lame (CBR/VBR), FFmpeg's native AAC, libvorbis and
+libopus at 44.1 and 48 kHz (`scripts/make-samples.sh` rebuilds that corpus; `FingerprintTest` pins the
+table to the measured values). Several encoders share a cutoff, so the guess lists candidates. Very high
+bitrates (AAC 256+, LAME V0, Vorbis q6+) leave **no** cut on full-band noise — those are the `limit_*`
+samples and carry no expectation. The table has not been checked against real music or against Apple /
+FDK / Fraunhofer encoders; say so rather than overclaiming.
+
+### Stereo and joint-stereo analysis
+
+`AudioAnalyzer` keeps one spectral *layer* per view: the mono mix (layer 0, drives the verdict and must
+stay numerically identical to the old single-spectrum behaviour) and, for stereo, Left/Right/Side. Left
+and right go through **one** complex FFT (L as real part, R as imaginary) and mid/side are derived from the
+separated spectra, which keeps the cost at one FFT per window — the first four-FFT version cost ~40 % of
+throughput. Peak-hold is compared in the power domain and converted to dB once at the end; the 8-bit
+spectrogram levels use a fast log2 (±0.02 dB), so don't "simplify" those back to per-bin `log10`.
+
+Joint-stereo evidence (`StereoAnalysis.jointStereo`) is informational only: it adds a finding but never
+changes the verdict. Test material must be **true stereo** — an ffmpeg `aformat=channel_layouts=stereo` on a
+mono noise source gives a dual-mono file (correlation 1.0) that exercises nothing.
 
 ## Testing
 
@@ -119,9 +147,16 @@ naive ffmpeg pipeline without checking each stage's actual sample rate/depth** �
 of sample generation silently resampled the "real" files too, which produced false test failures
 that looked like Judge bugs but weren't. Verify with `ffprobe` before trusting a sample.
 
-No instrumented/UI tests exist yet; screen changes were manually verified on a local headless
-emulator during development (see the `android-dev-environment` memory file for the recipe —
-worth checking if it still exists and is current before repeating that setup work).
+Synthetic unit tests (`StereoAnalysisTest`, `FingerprintTest`) need no samples. Real-encoder samples:
+`scripts/make-samples.sh <dir>`, then `SPECTROFLAC_SAMPLES=<dir>`.
+
+Instrumented Compose tests live in `app/src/androidTest/` (`SpectrogramScreenTest`: horizontal / vertical /
+diagonal pinch, pan, double-tap, cursor, layer chips). They read the zoom state back through the canvas's
+`stateDescription`. Run them on the KVM emulator. **RAM is tight**: a Gradle build running next to the
+emulator has crashed it (segfault) — build the APKs first, `./gradlew --stop`, boot the emulator, then
+install both APKs and run
+`adb shell am instrument -w -e class com.spectroflac.ui.SpectrogramScreenTest com.spectroflac.debug.test/androidx.test.runner.AndroidJUnitRunner`.
+Other screens were verified by hand on the emulator (see the `android-dev-environment` memory file).
 
 ## Releasing
 

@@ -74,7 +74,11 @@ Instead of simply saying *"lossless"* or *"lossy"*, SpectroFlac provides the mea
 * 📊 **RMS / peak / crest factor**
 * 📉 **Clipping detection**
 * 🎚️ **TT-style DR estimation**
-* 🧾 **Encoder fingerprints**
+* 🧾 **Encoder fingerprints** (MP3 CBR/VBR, AAC, Vorbis, Opus)
+* 🔎 **Interactive spectrogram** — pinch-zoom, pan, frequency/time cursor
+* 🎛️ **Per-channel spectrum** (left, right, mid, side)
+* 🎧 **Stereo analysis** — correlation, balance, width, phase problems
+* 🧩 **Joint-stereo artifact detection**
 * 🏷️ **Metadata and tags**
 * 🖼️ **Embedded cover art**
 * 📁 **Recursive folder scanning**
@@ -202,6 +206,26 @@ The measured cutoff is then compared with known encoder characteristics.
 
 This can provide strong evidence that a supposedly lossless file originated from a lossy source.
 
+The fingerprint table was calibrated by round-tripping full-band stereo noise through `libmp3lame` (CBR and VBR), FFmpeg's AAC, `libvorbis` and `libopus` at 44.1 and 48 kHz and measuring where each cut landed (`scripts/make-samples.sh` regenerates that corpus). Many encoders share the same cutoff, so a cut suggests candidates; it never names one.
+
+### Interactive spectrogram
+
+Tap the spectrogram strip on a result to open the full view:
+
+* **pinch** to zoom — fingers spread horizontally zoom time, vertically zoom frequency, diagonally both;
+* **drag** to pan, **double-tap** to zoom in on a spot or back out;
+* **tap** to place a crosshair that reads out the exact frequency, time and level; the *Cursor* toggle turns one-finger drags into cursor moves;
+* switch between **Mid, Left, Right and Side** (stereo files);
+* the *Cutoff* toggle draws the measured cutoff across the picture.
+
+The result screen also shows a **spectrum chart** (peak-hold and average, per channel, with the cutoff marked) and a **stereo card** with a left/right correlation timeline.
+
+### Stereo and joint-stereo analysis
+
+For stereo files SpectroFlac measures the left/right **correlation**, the **balance**, the side-to-mid **width**, and the share of the track that is **out of phase**; it also flags a silent channel and near-mono files.
+
+Joint-stereo coders (MP3 joint stereo, AAC M/S, Vorbis coupling) spend their bits on the mid channel and starve the side channel. SpectroFlac looks for a side channel whose spectrum stops well below the mid channel's, and for a stereo image that narrows sharply from the mid range to the treble. This is reported as **supporting evidence** and never changes the verdict on its own.
+
 ---
 
 ## ⚠️ Important limitations
@@ -219,6 +243,11 @@ Likewise, a lossy source can sometimes be made harder to identify through:
 * multiple generations of transcoding.
 
 For this reason, SpectroFlac reports a **confidence value and the measurements behind it** instead of pretending that spectral analysis can prove the origin of every file.
+
+Two limits worth knowing:
+
+* **Very high bitrates leave no cut.** AAC 256 kbps and up, LAME V0 and Vorbis q6 and up show no brick wall on a full-band signal, so the spectral test cannot see them. A clean spectrum proves nothing about those.
+* **The fingerprints are calibrated on synthetic noise** through FFmpeg's encoders. Other encoders (Apple, FDK, Fraunhofer) and real music can land elsewhere.
 
 > **The spectral test is strong evidence, not proof.**
 
@@ -284,8 +313,9 @@ app/src/main/java/com/spectroflac/
 │
 ├── analysis/
 │   ├── FFT
-│   ├── Streaming measurements
-│   ├── Spectral analysis
+│   ├── Streaming measurements (per-channel spectra, stereo sums)
+│   ├── Spectral analysis and encoder fingerprints
+│   ├── Stereo / joint-stereo analysis
 │   ├── Dynamics analysis
 │   └── Verdict engine
 │
@@ -300,7 +330,8 @@ app/src/main/java/com/spectroflac/
 │   └── Share intents
 │
 └── ui/
-    ├── Compose screens
+    ├── Compose screens (incl. the interactive spectrogram)
+    ├── Charts (spectrum, correlation)
     └── glass/
         └── AGSL liquid glass system
 ```
@@ -564,8 +595,19 @@ SPECTROFLAC_SAMPLES=/path/to/samples \
 The test suite expects:
 
 ```text
-real_*.flac → genuine
-fake_*.flac → non-genuine
+real_*.flac  → genuine
+fake_*.flac  → non-genuine
+limit_*.flac → no expectation (encodes the spectral test cannot see)
+```
+
+`scripts/make-samples.sh /path/to/samples` builds such a corpus with FFmpeg (real stereo, MP3/AAC/Vorbis/Opus round-trips at several bitrates, upsampled and padded files) and checks each stage with `ffprobe`.
+
+Synthetic tests (stereo statistics, the fingerprint table, per-channel layers) need no samples and always run.
+
+The interactive spectrogram has instrumented Compose tests that drive it with real touch gestures — horizontal, vertical and diagonal pinch, pan, double-tap, cursor. They need a device or emulator:
+
+```bash
+./gradlew :app:connectedDebugAndroidTest
 ```
 
 ---
@@ -638,19 +680,24 @@ The application exposes the measurements behind the verdict rather than hiding t
 
 ## 🗺️ Roadmap
 
-### Planned
+### Done in 1.1.0
 
-* [ ] Full interactive spectrogram
-* [ ] Pinch-to-zoom
-* [ ] Spectrogram panning
-* [ ] Frequency cursor
-* [ ] Per-channel spectrum
-* [ ] Stereo correlation
-* [ ] Joint-stereo artifact analysis
-* [ ] Additional encoder fingerprints
-* [ ] More detailed spectral visualizations
+* [x] Full interactive spectrogram
+* [x] Pinch-to-zoom
+* [x] Spectrogram panning
+* [x] Frequency cursor
+* [x] Per-channel spectrum
+* [x] Stereo correlation
+* [x] Joint-stereo artifact analysis
+* [x] Additional encoder fingerprints
+* [x] More detailed spectral visualizations
 
-The analysis engine already produces much of the data required for the interactive spectrogram; the current UI displays a preview strip.
+### Ideas
+
+* [ ] Calibrate the fingerprints and the joint-stereo thresholds on real music, not only synthetic noise
+* [ ] Fingerprints for Apple AAC, FDK-AAC and Fraunhofer MP3
+* [ ] Multichannel (5.1 / 7.1) stereo-style analysis
+* [ ] Export the spectrogram as an image
 
 ---
 
