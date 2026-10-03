@@ -67,6 +67,9 @@ class BackdropState {
 
 val LocalBackdrop = staticCompositionLocalOf { BackdropState() }
 
+/** Settings switch: false drops every panel and the backdrop onto the cheap frosted look. */
+val LocalGlassEnabled = staticCompositionLocalOf { true }
+
 /** Root container: paints the animated backdrop and drives its clock. */
 @SuppressLint("NewApi")
 @Composable
@@ -76,7 +79,8 @@ fun LiquidBackdrop(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val state = remember { BackdropState() }
-    val holder = remember { createHolder(GlassShaders.BACKDROP) }
+    val glassEnabled = LocalGlassEnabled.current
+    val holder = remember(glassEnabled) { if (glassEnabled) createHolder(GlassShaders.BACKDROP) else null }
 
     if (animated) {
         LaunchedEffect(Unit) {
@@ -130,7 +134,8 @@ fun GlassPanel(
 ) {
     val backdrop = LocalBackdrop.current
     val density = LocalDensity.current
-    val holder = remember { createHolder(GlassShaders.GLASS) }
+    val glassEnabled = LocalGlassEnabled.current
+    val holder = remember(glassEnabled) { if (glassEnabled) createHolder(GlassShaders.GLASS) else null }
     var origin by remember { mutableStateOf(Offset.Zero) }
 
     val radiusPx = with(density) { cornerRadius.toPx() }

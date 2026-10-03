@@ -32,6 +32,8 @@ object ReportJson {
         put("summary", report.summary)
         put("analysedAt", report.analysedAtMillis)
         put("analysisMillis", report.analysisDurationMillis)
+        put("sourceModified", report.sourceModifiedMillis)
+        put("analyzerVersion", report.analyzerVersion)
         report.errorMessage?.let { put("error", it) }
 
         put("findings", JSONArray().also { array ->
@@ -290,6 +292,8 @@ object ReportJson {
             errorMessage = json.optStringOrNull("error"),
             stereo = stereo,
             jointStereo = jointStereo,
+            sourceModifiedMillis = json.optLong("sourceModified"),
+            analyzerVersion = json.optInt("analyzerVersion"),
         )
     }
 

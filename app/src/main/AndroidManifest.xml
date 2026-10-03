@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- A scan keeps running with the screen off: a foreground service with a progress notification
+         and a wake lock. None of these ask for anything dangerous except the notification (Android 13+),
+         requested the first time a scan starts. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:name=".SpectroFlacApp"
         android:allowBackup="true"
@@ -33,6 +41,16 @@
                 <data android:mimeType="audio/*" />
             </intent-filter>
 
+            <!-- "Share" with several files selected -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="audio/flac" />
+                <data android:mimeType="audio/x-flac" />
+                <data android:mimeType="application/x-flac" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+
             <!-- "Open with" on a .flac file -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -56,6 +74,11 @@
                 <data android:pathPattern=".*\\..*\\..*\\.flac" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".queue.ScanService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

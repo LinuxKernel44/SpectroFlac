@@ -25,8 +25,8 @@ android {
         applicationId = "com.spectroflac"
         minSdk = 29
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.2.0"
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -100,6 +100,8 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation("junit:junit:4.13.2")
+    // android.jar only stubs org.json; the real implementation lets JVM tests cover the JSON code.
+    testImplementation("org.json:json:20240303")
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)

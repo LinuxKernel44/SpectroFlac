@@ -128,7 +128,18 @@ data class AnalysisReport(
     /** In-memory only, like [spectrogram]: re-analysing restores them for a history entry. */
     val spectrumCurves: SpectrumCurves? = null,
     val spectrogramFull: SpectrogramFull? = null,
+    /** Last-modified time of the analysed file and the app version that analysed it, for "skip known files". */
+    val sourceModifiedMillis: Long = 0L,
+    val analyzerVersion: Int = 0,
 ) {
+    /**
+     * The same result without what is expensive to hold on to: the cover art, the spectrograms and the
+     * spectrum curves. A queue of hundreds of files keeps these; opening one re-analyses it.
+     */
+    fun light(): AnalysisReport = copy(
+        coverBytes = null, spectrogram = null, spectrogramFull = null, spectrumCurves = null,
+    )
+
     val title: String? get() = tags["TITLE"]
     val artist: String? get() = tags["ARTIST"] ?: tags["ALBUMARTIST"]
     val album: String? get() = tags["ALBUM"]

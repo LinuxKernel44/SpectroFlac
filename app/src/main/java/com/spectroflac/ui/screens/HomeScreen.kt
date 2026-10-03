@@ -19,7 +19,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Pending
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.InsertDriveFile
@@ -41,9 +46,16 @@ import com.spectroflac.ui.theme.SpectroColors
 @Composable
 fun HomeScreen(
     historyCount: Int,
+    queueCount: Int,
+    restorableCount: Int,
     onPickFile: () -> Unit,
+    onPickFiles: () -> Unit,
     onPickFolder: () -> Unit,
     onHistory: () -> Unit,
+    onOpenQueue: () -> Unit,
+    onSettings: () -> Unit,
+    onResumeRestored: () -> Unit,
+    onDiscardRestored: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -53,7 +65,10 @@ fun HomeScreen(
             .padding(horizontal = 22.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(28.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.End) {
+            GlassIconButton(Icons.Filled.Settings, "Settings", onSettings)
+        }
+        Spacer(Modifier.height(10.dp))
         Text(
             text = "SpectroFlac",
             style = MaterialTheme.typography.displaySmall,
@@ -99,6 +114,23 @@ fun HomeScreen(
             }
         }
 
+        if (restorableCount > 0) {
+            Spacer(Modifier.height(18.dp))
+            GlassPanel(Modifier.fillMaxWidth(), cornerRadius = 22.dp, refraction = 14.dp, tint = 0.10f) {
+                Column(Modifier.padding(18.dp)) {
+                    Text(
+                        "$restorableCount file${if (restorableCount == 1) "" else "s"} were still waiting when the app closed.",
+                        style = MaterialTheme.typography.bodyMedium, color = SpectroColors.TextPrimary,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        GlassButton("Resume", onResumeRestored, icon = Icons.Filled.PlayArrow, prominent = true, modifier = Modifier.weight(1f))
+                        GlassButton("Discard", onDiscardRestored, icon = Icons.Filled.Close, accent = SpectroColors.Fake, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(22.dp))
 
         GlassButton(
@@ -110,12 +142,30 @@ fun HomeScreen(
         )
         Spacer(Modifier.height(12.dp))
         GlassButton(
+            label = "Analyse several files",
+            onClick = onPickFiles,
+            icon = Icons.Filled.LibraryMusic,
+            accent = SpectroColors.BackdropViolet,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        GlassButton(
             label = "Scan a folder",
             onClick = onPickFolder,
             icon = Icons.Filled.Folder,
             accent = SpectroColors.BackdropMagenta,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (queueCount > 0) {
+            Spacer(Modifier.height(12.dp))
+            GlassButton(
+                label = "Scan queue ($queueCount)",
+                onClick = onOpenQueue,
+                icon = Icons.Filled.Pending,
+                accent = SpectroColors.Suspicious,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Spacer(Modifier.height(12.dp))
         GlassButton(
             label = if (historyCount > 0) "History ($historyCount)" else "History",

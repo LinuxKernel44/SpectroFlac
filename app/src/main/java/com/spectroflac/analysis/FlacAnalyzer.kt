@@ -3,10 +3,12 @@ package com.spectroflac.analysis
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import com.spectroflac.BuildConfig
 import com.spectroflac.flac.ContainerKind
 import com.spectroflac.flac.ContainerSniffer
 import com.spectroflac.flac.FlacDecoder
 import com.spectroflac.flac.FlacFormatException
+import com.spectroflac.queue.FileInfo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
@@ -180,6 +182,8 @@ class FlacAnalyzer(private val context: Context) {
                 jointStereo = jointStereo,
                 spectrumCurves = StereoAnalysis.curves(m),
                 spectrogramFull = m.fullSpectrogram,
+                sourceModifiedMillis = FileInfo.lastModified(context, uri),
+                analyzerVersion = BuildConfig.VERSION_CODE,
             )
         }
     }

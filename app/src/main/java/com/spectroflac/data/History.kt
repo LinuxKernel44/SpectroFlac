@@ -41,6 +41,16 @@ interface AnalysisDao {
     @Query("DELETE FROM analyses")
     suspend fun clear()
 
+    @Query("SELECT * FROM analyses WHERE uri = :uri LIMIT 1")
+    suspend fun get(uri: String): AnalysisRecord?
+
+    @Query("DELETE FROM analyses WHERE analysedAt < :cutoff")
+    suspend fun deleteOlderThan(cutoff: Long)
+
+    /** Keeps only the [limit] most recent analyses. */
+    @Query("DELETE FROM analyses WHERE uri NOT IN (SELECT uri FROM analyses ORDER BY analysedAt DESC LIMIT :limit)")
+    suspend fun trimTo(limit: Int)
+
     @Query("SELECT * FROM analyses ORDER BY analysedAt DESC LIMIT 500")
     suspend fun all(): List<AnalysisRecord>
 }
