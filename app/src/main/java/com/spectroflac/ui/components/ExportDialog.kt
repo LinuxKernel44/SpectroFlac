@@ -35,6 +35,7 @@ import com.spectroflac.export.image.ExportBenchmark
 import com.spectroflac.export.image.ExportChannel
 import com.spectroflac.export.image.ExportContent
 import com.spectroflac.export.image.ExportPlanner
+import com.spectroflac.export.image.ExportText
 import com.spectroflac.export.image.ImageLayout
 import com.spectroflac.export.image.PlotSize
 import com.spectroflac.ui.theme.SpectroColors
@@ -143,7 +144,7 @@ fun ExportDialog(
                         modifier = Modifier.testTag(ExportDialogTags.SUMMARY),
                     )
                     Text(
-                        "Final image ${layout.totalWidth} × ${layout.totalHeight} px  ·  about ${formatBytes(estimate.pngBytes)} PNG  ·  " +
+                        "Final image ${layout.totalWidth} × ${layout.totalHeight} px  ·  up to about ${formatBytes(estimate.pngBytes)} PNG  ·  " +
                             "${formatEta(estimate.seconds.toLong() * 1000).removePrefix("about ")} to render",
                         style = MaterialTheme.typography.bodySmall, color = SpectroColors.TextTertiary,
                         modifier = Modifier.testTag(ExportDialogTags.SIZE_LINE),
@@ -217,15 +218,9 @@ fun ExportDialog(
 fun summaryLine(plot: PlotSize, fftSize: Int, hzPerRow: Double, msPerColumn: Double): String =
     String.format(
         Locale.US, "%.1f MP  ·  FFT %d  ·  %s per row  ·  %s per column",
-        plot.megapixels, fftSize, hzText(hzPerRow), msText(msPerColumn),
+        plot.megapixels, fftSize, ExportText.hz(hzPerRow), ExportText.ms(msPerColumn),
     )
 
-private fun hzText(hz: Double) = if (hz >= 10) String.format(Locale.US, "%.0f Hz", hz) else String.format(Locale.US, "%.1f Hz", hz)
-private fun msText(ms: Double) = when {
-    ms >= 100 -> String.format(Locale.US, "%.0f ms", ms)
-    ms >= 10 -> String.format(Locale.US, "%.0f ms", ms)
-    else -> String.format(Locale.US, "%.1f ms", ms)
-}
 
 @Composable
 private fun Label(text: String) {

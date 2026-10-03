@@ -61,8 +61,8 @@ class SpectrogramImageExporter(private val context: Context) {
             val subject = completeSubject(request.subject, info)
             val cover = if (request.content.trackInfo) decodeCover(info) else null
             val infoLine = String.format(
-                Locale.US, "%s  ·  FFT %d  ·  %.1f Hz/row  ·  %.0f ms/column",
-                request.channel.label, plan.fftSize, plan.hzPerRow, plan.columnSpan / info.sampleRate * 1000.0,
+                Locale.US, "%s  ·  FFT %d  ·  %s/row  ·  %s/column",
+                request.channel.label, plan.fftSize, ExportText.hz(plan.hzPerRow), ExportText.ms(plan.columnSpan / info.sampleRate * 1000.0),
             )
 
             val counting = CountingOutputStream(BufferedOutputStream(out, 1 shl 16))
