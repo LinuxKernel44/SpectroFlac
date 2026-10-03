@@ -197,6 +197,18 @@ object Exporter {
         context.startActivity(Intent.createChooser(intent, "Share report").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    /** Shares an image file that already sits in the cache's exports folder. */
+    fun shareImage(context: Context, file: File, displayName: String) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, displayName)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share spectrogram").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
     /** Writes the payload into the app cache and shares it through the FileProvider. */
     fun shareFile(context: Context, fileName: String, content: String, mimeType: String) {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }

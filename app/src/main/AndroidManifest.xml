@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Asked once when the first scan starts: lets Android leave a long scan alone with the screen off. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:name=".SpectroFlacApp"
@@ -77,6 +79,11 @@
 
         <service
             android:name=".queue.ScanService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".export.image.ExportService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 

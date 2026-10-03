@@ -66,6 +66,10 @@ app/src/main/java/com/spectroflac/
 │                   (settings + device state -> queue; history, restore, auto-export), ScanService
 │                   (foreground service + notification + wake lock), DeviceMonitor, QueueStore, FileInfo
 ├── settings/       AppSettings + SettingsRepository (DataStore)
+├── export/image/   Spectrogram export to PNG: PngStreamWriter, LevelStore (strip-major temp matrix),
+│                   StftEngine (STFT columns, PCM sources), ExportPlanner (sizes, estimates, Maximum),
+│                   PcmExtractor, OverlayPainter + ImageComposer (header/axes/legend, strip by strip),
+│                   SpectrogramImageExporter (orchestrator), SpectrogramExportJob + ExportService
 ├── data/           Room entity/DAO for local history, JSON (de)serialization of a report
 ├── export/         Exporter — text report, CSV, JSON, share intents
 └── ui/
@@ -101,6 +105,41 @@ file mean those low bits never carried signal — that's `effectiveBitDepth` /
 
 If you touch the thresholds in `Judge.kt`, **you must re-run `JudgeTest` against real encoder
 output**, not just synthetic signals — see Testing.
+
+### Spectrogram export (1.3.0)
+
+It **re-renders from the file** (the in-memory spectrogram is only 2,600 × 1,024): the rows pick the FFT
+(`ExportPlanner.fftSize`: next power of two of 2 × rows, so at least one bin per row) and the columns pick
+the window spacing, with up to 16 peak-held windows per column when a column spans more audio than a window.
+Pipeline: decode the chosen channel to a float temp file (`PcmExtractor`) → columns on all cores in chunks
+(`StftColumns`) → `LevelStore` → compose + stream the PNG. Things that are easy to break:
+
+- `LevelStore` layout: strip `s` holds, column after column, that column's bytes for the strip's bands, so a
+  strip is one contiguous read (`levelAt = strip[column * rows + band - s * stripRows]`) and a chunk of
+  columns is written with one write per strip. Writing a column at a time would be millions of tiny writes.
+- The PNG is RGB and streamed row by row (`PngStreamWriter`); memory stays small at any size. Overlays are
+  painted on one small bitmap per strip of rows and composited over the level pixels (`ImageComposer`), never
+  on a full-size bitmap.
+- Windows are **clamped inside the file** (`StftColumns.column`): zero-padding past the start made the first
+  column splatter energy over every frequency (a visible line on the left of a lossy file's spectrogram).
+- The size estimate (`ExportPlanner.estimate`) uses a measured FFT time (`ExportBenchmark`), a PNG ratio of
+  0.55 and a decode speed of 40x real time; they are rough. `maximum()` keeps temp + PNG under 40 % of free space.
+- Dialog windows are separate windows, so glass has nothing to refract and the screen behind shows through:
+  use `DialogSurface` (opaque dark layer under the glass), never a bare `GlassPanel` inside a `Dialog`.
+- A cancelled or failed export deletes its half-written output (`SpectrogramExportJob.discard`).
+- Measured on a 4-core emulator: 8192 x 4096 plot in 6.3 s (12 MB), 16384 x 16384 plot (a 20275 x 19695 image,
+  FFT 32768) in 47 s (45 MB PNG), Java heap ~40 MB, temp files ~260 MB.
+
+### Permissions and notifications (1.3.0)
+
+On the first scan a dialog explains why, then the notification permission and
+`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` are asked in turn (`MainActivity`, flag `permissions_prompted`).
+It is asked once; Settings > "Notifications and battery" shows both statuses with an *Allow* button (a refused
+notification permission cannot be asked again by Android, so the button then opens the app's notification
+settings: flag `notifications_denied`). The battery exemption is a sideloading/GitHub-distribution feature —
+Google Play restricts it. The finish notification (`AppNotifications.scanFinished`, setting `notifyOnFinish`,
+default on) is shown **always**, even with the app open, as the user chose. Thread presets: Quiet = cores/4 at
+low priority, Balanced = Auto, Fast = cores-1 at normal priority (`Parallelism.applyPreset`).
 
 ### The scan queue and multi-threading (1.2.0)
 

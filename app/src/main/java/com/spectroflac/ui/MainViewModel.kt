@@ -9,7 +9,14 @@ import androidx.compose.runtime.setValue
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.compose.ui.graphics.toArgb
 import com.spectroflac.SpectroFlacApp
+import com.spectroflac.export.image.ExportNames
+import com.spectroflac.export.image.ExportRequest
+import com.spectroflac.export.image.ExportSubject
+import com.spectroflac.export.image.ExportTarget
+import com.spectroflac.ui.components.ExportChoice
+import com.spectroflac.ui.components.color
 import com.spectroflac.analysis.AnalysisReport
 import com.spectroflac.analysis.Verdict
 import com.spectroflac.queue.FileInfo
@@ -52,6 +59,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val queue = spectroApp.queue
     val settings: StateFlow<AppSettings> = spectroApp.settings
     val restorable: StateFlow<List<NewFile>> = spectroApp.restorable
+    val exportJob = spectroApp.exportJob
 
     var screen by mutableStateOf<Screen>(Screen.Home)
         private set
@@ -59,6 +67,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var message by mutableStateOf<String?>(null)
         private set
+
+    /** The result whose spectrogram the user is exporting (the dialog is open while this is set). */
+    var exportDialogReport by mutableStateOf<AnalysisReport?>(null)
+        private set
+    private var pendingSave: Pair<AnalysisReport, ExportChoice>? = null
 
     /** True while a folder is still being walked; files are queued as they are found. */
     var listing by mutableStateOf(false)
@@ -200,6 +213,64 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun exportReports(): List<AnalysisReport> = queue.reports()
+
+    // ---- spectrogram export ----------------------------------------------------------------
+
+    fun openExportDialog(report: AnalysisReport) {
+        if (report.technical != null) exportDialogReport = report
+    }
+
+    fun closeExportDialog() {
+        exportDialogReport = null
+    }
+
+    /** Remembers the choice and returns the file name to suggest to the "save as" picker. */
+    fun prepareSave(report: AnalysisReport, choice: ExportChoice): String {
+        pendingSave = report to choice
+        exportDialogReport = null
+        return ExportNames.imageName(report.title, report.fileName, choice.plot)
+    }
+
+    /** The user picked where to save: render into that document. */
+    fun startSave(uri: Uri) {
+        val (report, choice) = pendingSave ?: return
+        pendingSave = null
+        val name = ExportNames.imageName(report.title, report.fileName, choice.plot)
+        exportJob.start(requestOf(report, choice), ExportTarget.Document(uri, name), name)
+    }
+
+    fun cancelPendingSave() {
+        pendingSave = null
+    }
+
+    /** Renders into a temporary file that is shared once it is ready. */
+    fun startShare(report: AnalysisReport, choice: ExportChoice) {
+        exportDialogReport = null
+        val name = ExportNames.imageName(report.title, report.fileName, choice.plot)
+        val file = java.io.File(getApplication<Application>().cacheDir, "exports/$name")
+        exportJob.start(requestOf(report, choice), ExportTarget.Share(file, name), name)
+    }
+
+    private fun requestOf(report: AnalysisReport, choice: ExportChoice) = ExportRequest(
+        uri = Uri.parse(report.uri),
+        plot = choice.plot,
+        channel = choice.channel,
+        content = choice.content,
+        subject = ExportSubject(
+            fileName = report.fileName,
+            title = report.title,
+            artist = report.artist,
+            formatLine = null,
+            verdictLabel = report.verdict.short,
+            verdictColor = report.verdict.color().toArgb(),
+            confidence = report.confidence,
+            cutoffHz = report.spectral?.takeIf { it.hasBrickWall }?.cutoffHz,
+        ),
+    )
+
+    fun showMessage(text: String) {
+        message = text
+    }
 
     // ---- settings --------------------------------------------------------------------------
 

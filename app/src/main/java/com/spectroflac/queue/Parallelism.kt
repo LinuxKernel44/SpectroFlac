@@ -3,6 +3,13 @@ package com.spectroflac.queue
 import com.spectroflac.settings.AppSettings
 import kotlin.math.max
 
+/** One-tap bundles of the performance settings. */
+enum class ThreadPreset(val label: String, val blurb: String) {
+    QUIET("Quiet", "Cool and light on battery"),
+    BALANCED("Balanced", "A good mix: the Auto setting"),
+    FAST("Fast", "All cores but one, full priority"),
+}
+
 /**
  * How many files the queue analyses at once. A FLAC file decodes sequentially, so parallelism means
  * several files at the same time; one file always stays on one thread.
@@ -46,6 +53,39 @@ object Parallelism {
             }
         }
         return n
+    }
+
+    /** Quiet: a quarter of the cores (2 on an 8-core phone), at least one. */
+    fun quietThreads(cores: Int): Int = (cores / 4).coerceIn(1, AppSettings.MAX_PARALLEL)
+
+    /** Fast: every core but one, which stays free for the system and the interface. */
+    fun fastThreads(cores: Int): Int = (cores - 1).coerceIn(1, AppSettings.MAX_PARALLEL)
+
+    /** The number of files at once a preset gives on this phone. */
+    fun presetThreads(preset: ThreadPreset, cores: Int): Int = when (preset) {
+        ThreadPreset.QUIET -> quietThreads(cores)
+        ThreadPreset.BALANCED -> auto(cores)
+        ThreadPreset.FAST -> fastThreads(cores)
+    }
+
+    /** The settings a preset stands for: Balanced keeps the Auto mode, the others fix a number. */
+    fun applyPreset(settings: AppSettings, preset: ThreadPreset, cores: Int): AppSettings = when (preset) {
+        ThreadPreset.QUIET -> settings.copy(parallelFiles = quietThreads(cores), lowPriorityThreads = true)
+        ThreadPreset.BALANCED -> settings.copy(parallelFiles = AppSettings.AUTO, lowPriorityThreads = true)
+        ThreadPreset.FAST -> settings.copy(parallelFiles = fastThreads(cores), lowPriorityThreads = false)
+    }
+
+    /** The preset the current settings amount to, or null when they were tuned by hand. */
+    fun currentPreset(settings: AppSettings, cores: Int): ThreadPreset? {
+        val n = settings.parallelFiles
+        val low = settings.lowPriorityThreads
+        return when {
+            n == AppSettings.AUTO && low -> ThreadPreset.BALANCED
+            low && n == quietThreads(cores) -> ThreadPreset.QUIET
+            !low && n == fastThreads(cores) -> ThreadPreset.FAST
+            low && n == auto(cores) -> ThreadPreset.BALANCED
+            else -> null
+        }
     }
 
     /** Why the queue holds back, if the battery is the reason. */

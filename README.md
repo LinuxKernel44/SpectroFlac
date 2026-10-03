@@ -85,7 +85,10 @@ Instead of simply saying *"lossless"* or *"lossy"*, SpectroFlac provides the mea
 * 🧵 **Parallel analysis** — several files at once (Auto, or 1–8), with heat and battery protection
 * 📋 **Scan queue** — per-file and overall progress, time left, pause / cancel / retry / reorder
 * 🔔 **Background scans** with a progress notification
-* ⚙️ **Settings** — performance, queue, history, auto-export, appearance
+* 🎚️ **Thread presets** — Quiet, Balanced, Fast in one tap
+* ✅ **Finish notification** — "118 genuine, 4 not genuine, 1 damaged" when a scan ends
+* 🖼️ **Spectrogram export** — a PNG at any resolution, up to hundreds of megapixels, re-rendered from the file
+* ⚙️ **Settings** — performance, notifications, queue, history, auto-export, appearance
 * 📤 **CSV / JSON export**
 * 🕘 **Local analysis history**
 * 📱 **Android share-sheet integration**
@@ -427,11 +430,23 @@ A FLAC file decodes sequentially, so parallelism means **several files analysed 
 
 While a scan runs, a **foreground service** with one progress notification keeps it going with the screen off (and holds a partial wake lock). It stops by itself when the queue is empty. It can be turned off in Settings.
 
+### Spectrogram export
+
+**Export spectrogram image** (on the result screen and in the full spectrogram view) renders the spectrogram of the file to a PNG. Unlike a screenshot, it **re-analyses the file at the resolution you ask for**: the number of rows picks the FFT length (one bin per row or a little more) and the number of columns picks how far apart the analysis windows sit, so a bigger image really shows more detail, up to what the audio holds.
+
+* **Size:** presets (Screen 1920×1080, 4K, 8K), any exact width × height (256 px up to 32,768 rows and 1,000,000 columns), or **Maximum** — the finest analysis the file allows (16,384 rows ≈ 1.3 Hz each at 44.1 kHz, one column every ~256 samples), shrunk to fit your free storage. The dialog shows the detail per pixel (FFT size, Hz per row, ms per column), the final image size, the estimated PNG size and render time, and refuses sizes that do not fit.
+* **Channel:** Mid, Left, Right or Side for stereo files.
+* **In the image:** frequency and time axes with labels, a header (file, format, verdict, analysis details), the track title and artist with a small cover, the measured cutoff line, and a dBFS colour legend; each can be switched off.
+* **Where it goes:** *Save as…* (you pick the place and name) or *Share*.
+* **How it can be so large:** the audio is decoded once to a temporary file, the columns are computed on all cores into a second temporary file laid out so it can be read back row by row, and the PNG is **streamed** out while it is composed, so memory use stays small whatever the size (a 16,384 × 16,384 spectrogram — a 20,275 × 19,695 image — took 47 s on a 4-core emulator with the Java heap around 40 MB). Only free storage and time limit it.
+* It keeps running if you leave the app (foreground service with a progress notification and a Cancel button).
+
 ### Settings
 
 | Section | Options |
 |---|---|
-| **Performance** | files at once (Auto / 1–8), background scan, thermal protection, low-priority threads, keep the screen on, pause below a battery level |
+| **Performance** | presets **Quiet** (¼ of the cores, low priority), **Balanced** (Auto) and **Fast** (all cores but one, full priority); files at once (Auto / 1–8), background scan, thermal protection, low-priority threads, keep the screen on, pause below a battery level |
+| **Notifications and battery** | notify when a scan finishes (on by default), the status of the notification permission and of the battery-optimization exemption, each with an *Allow* button |
 | **Queue** | skip files already analysed (unchanged file, same app version), offer to resume after a restart (default: start fresh) |
 | **Results and history** | history size, delete analyses older than N days, auto-export a CSV / JSON into a chosen folder when a scan ends |
 | **Appearance** | liquid glass effects, animated backdrop |
@@ -502,7 +517,7 @@ SpectroFlac is designed to work entirely offline.
 
 Files are accessed through Android's **Storage Access Framework** and analyzed locally.
 
-For background scans the app declares a foreground service (data sync), a wake lock and the notification permission (Android 13+). The notification permission is requested once, the first time a scan starts; if it is refused, scans still run, just without a visible notification. None of these give the app access to anything outside the files you pick.
+For background scans and exports the app declares a foreground service (data sync), a wake lock, the notification permission (Android 13+) and the battery-optimization exemption request. The first time a scan starts, a short dialog explains why, then Android's own prompts follow: *notifications*, then *"Let app always run in background?"*. If you refuse, nothing breaks (scans still run, without a visible notification, and Android may slow a long scan down with the screen off); the Settings screen shows the state of both and lets you grant them later. None of these give the app access to anything outside the files you pick.
 
 ---
 
@@ -631,8 +646,12 @@ Synthetic tests (stereo statistics, the fingerprint table, per-channel layers) n
 
 The queue engine (scheduling, parallelism limit, pause, cancel, reorder, retry, thermal hold, skip-known, statistics, time-left estimator) has plain JVM tests with controllable fake analysers, so no device is needed.
 
+The spectrogram export engine is unit-tested on the JVM too: the streaming PNG writer (validated by an independent decoder written from the spec, checking every chunk CRC), the strip-major level store that transposes the data, the STFT columns (a tone lights the right row; no splatter at the ends of the file), the planner (sizes, estimates, Maximum under a storage budget), axis ticks, layout and file names.
+
 On a device or emulator there are instrumented tests:
 
+* the export dialog (presets, Maximum, free-space and size limits, channel and content choices);
+* the export itself on real files, decoded with Android's own `BitmapFactory`: exact size, header text, the red cutoff line, a lossy file's brick wall at the right row, each channel, a 33-megapixel image checked through `BitmapRegionDecoder`, progress phases, cancellation leaving no temporary file, the foreground service, a failed export leaving nothing behind (`-e heavy true` adds the 268-megapixel one);
 * the interactive spectrogram, driven with real touch gestures — horizontal, vertical and diagonal pinch, pan, double-tap, cursor;
 * the queue and settings screens (what is shown, what each control reports);
 * an end-to-end run of the real queue, analyser, settings and database over real FLAC files: parallelism limits, per-file progress, pause/resume, cancel, skip-known, queue saving, and a timing check that parallel is really faster (`scripts/e2e-queue.sh` prepares the files).
@@ -711,6 +730,13 @@ The application exposes the measurements behind the verdict rather than hiding t
 
 ## 🗺️ Roadmap
 
+### Done in 1.3.0
+
+* [x] Spectrogram export to PNG at any resolution (re-rendered from the file, streamed to disk)
+* [x] Thread presets: Quiet, Balanced, Fast
+* [x] Notify when a scan finishes (on by default)
+* [x] Notification permission and battery-optimization exemption, asked on the first scan and manageable in Settings
+
 ### Done in 1.2.0
 
 * [x] Parallel analysis of several files
@@ -728,7 +754,6 @@ The application exposes the measurements behind the verdict rather than hiding t
 * [ ] Calibrate the fingerprints and thresholds on more real music (one album so far)
 * [ ] Fingerprints for Apple AAC, FDK-AAC and Fraunhofer MP3
 * [ ] Multichannel (5.1 / 7.1) stereo-style analysis
-* [ ] Export the spectrogram as an image
 * [ ] Compare two files (original vs. suspect)
 * [ ] Watch a folder and scan new files automatically
 

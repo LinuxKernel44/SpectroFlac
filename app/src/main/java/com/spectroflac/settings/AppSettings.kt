@@ -38,6 +38,8 @@ data class AppSettings(
     val pauseBelowBatteryPercent: Int = 0,
     val lowPriorityThreads: Boolean = true,
     val keepScreenOn: Boolean = false,
+    /** Post a notification with the verdict counts when a scan finishes. */
+    val notifyOnFinish: Boolean = true,
     val restoreQueueAfterRestart: Boolean = false,
     val skipKnownFiles: Boolean = false,
     /** Newest analyses kept in the history. */
@@ -73,6 +75,7 @@ class SettingsRepository(private val context: Context) {
         val batteryPause = intPreferencesKey("pause_below_battery")
         val lowPriority = booleanPreferencesKey("low_priority_threads")
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
+        val notifyOnFinish = booleanPreferencesKey("notify_on_finish")
         val restoreQueue = booleanPreferencesKey("restore_queue")
         val skipKnown = booleanPreferencesKey("skip_known")
         val historyLimit = intPreferencesKey("history_limit")
@@ -106,6 +109,7 @@ class SettingsRepository(private val context: Context) {
             pauseBelowBatteryPercent = this[Keys.batteryPause] ?: d.pauseBelowBatteryPercent,
             lowPriorityThreads = this[Keys.lowPriority] ?: d.lowPriorityThreads,
             keepScreenOn = this[Keys.keepScreenOn] ?: d.keepScreenOn,
+            notifyOnFinish = this[Keys.notifyOnFinish] ?: d.notifyOnFinish,
             restoreQueueAfterRestart = this[Keys.restoreQueue] ?: d.restoreQueueAfterRestart,
             skipKnownFiles = this[Keys.skipKnown] ?: d.skipKnownFiles,
             historyLimit = this[Keys.historyLimit] ?: d.historyLimit,
@@ -126,6 +130,7 @@ class SettingsRepository(private val context: Context) {
         this[Keys.batteryPause] = s.pauseBelowBatteryPercent
         this[Keys.lowPriority] = s.lowPriorityThreads
         this[Keys.keepScreenOn] = s.keepScreenOn
+        this[Keys.notifyOnFinish] = s.notifyOnFinish
         this[Keys.restoreQueue] = s.restoreQueueAfterRestart
         this[Keys.skipKnown] = s.skipKnownFiles
         this[Keys.historyLimit] = s.historyLimit

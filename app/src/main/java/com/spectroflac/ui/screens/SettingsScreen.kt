@@ -1,8 +1,20 @@
 package com.spectroflac.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -30,6 +42,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.spectroflac.BuildConfig
 import com.spectroflac.queue.Parallelism
+import com.spectroflac.queue.ThreadPreset
+import com.spectroflac.ui.PermissionStatus
 import com.spectroflac.settings.AppSettings
 import com.spectroflac.settings.AutoExportFormat
 import com.spectroflac.ui.components.GlassButton
@@ -40,6 +54,10 @@ import com.spectroflac.ui.glass.supportsLiquidGlass
 import com.spectroflac.ui.theme.SpectroColors
 
 object SettingsTags {
+    const val NOTIFY = "settings-notify-finish"
+    const val PERMISSION_NOTIFICATIONS = "settings-permission-notifications"
+    const val PERMISSION_BATTERY = "settings-permission-battery"
+    fun preset(label: String) = "settings-preset-$label"
     const val PARALLEL = "settings-parallel"
     fun parallelChip(label: String) = "settings-parallel-$label"
     const val BACKGROUND = "settings-background"
@@ -53,6 +71,9 @@ fun SettingsScreen(
     settings: AppSettings,
     cores: Int,
     exportFolderName: String?,
+    permissions: PermissionStatus,
+    onRequestNotifications: () -> Unit,
+    onRequestBattery: () -> Unit,
     onChange: ((AppSettings) -> AppSettings) -> Unit,
     onPickExportFolder: () -> Unit,
     onReset: () -> Unit,
@@ -69,6 +90,20 @@ fun SettingsScreen(
 
         item {
             SectionCard("Performance", icon = Icons.Filled.Memory) {
+                SettingLabel("Preset")
+                val activePreset = Parallelism.currentPreset(settings, cores)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    ThreadPreset.entries.forEach { preset ->
+                        PresetCard(
+                            preset = preset,
+                            threads = Parallelism.presetThreads(preset, cores),
+                            selected = activePreset == preset,
+                            onClick = { onChange { Parallelism.applyPreset(it, preset, cores) } },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(14.dp))
                 SettingLabel("Files analysed at the same time")
                 FlowRow(
                     Modifier.testTag(SettingsTags.PARALLEL),
@@ -120,6 +155,33 @@ fun SettingsScreen(
                     }
                 }
                 SettingNote("Only while the phone is not charging; the scan carries on by itself once it is plugged in.")
+            }
+        }
+
+        item {
+            SectionCard("Notifications and battery", icon = Icons.Filled.Notifications) {
+                SettingSwitch(
+                    "Notify when a scan finishes",
+                    "A notification such as \"118 genuine, 4 not genuine, 1 damaged\", shown even if the app is open. Tapping it opens the queue.",
+                    settings.notifyOnFinish, { v -> onChange { it.copy(notifyOnFinish = v) } },
+                    modifier = Modifier.testTag(SettingsTags.NOTIFY),
+                )
+                Spacer(Modifier.height(6.dp))
+                PermissionRow(
+                    title = "Notifications",
+                    explanation = "Needed for the scan progress and the finished notification.",
+                    granted = permissions.notifications,
+                    onAllow = onRequestNotifications,
+                    tag = SettingsTags.PERMISSION_NOTIFICATIONS,
+                )
+                PermissionRow(
+                    title = "Battery optimization",
+                    explanation = "Allowed means Android will not slow down or pause a long scan with the screen off.",
+                    grantedLabel = "Unrestricted", deniedLabel = "Optimized",
+                    granted = permissions.battery,
+                    onAllow = onRequestBattery,
+                    tag = SettingsTags.PERMISSION_BATTERY,
+                )
             }
         }
 
@@ -209,6 +271,65 @@ fun SettingsScreen(
                 Spacer(Modifier.height(14.dp))
                 GlassButton("Reset all settings", onReset, icon = Icons.Filled.RestartAlt, accent = SpectroColors.Fake, modifier = Modifier.fillMaxWidth())
             }
+        }
+    }
+}
+
+@Composable
+private fun PresetCard(preset: ThreadPreset, threads: Int, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val accent = if (selected) SpectroColors.BackdropCyan else Color.White
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        modifier
+            .testTag(SettingsTags.preset(preset.label))
+            .clip(shape)
+            .background(if (selected) SpectroColors.BackdropCyan.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.06f))
+            .border(1.dp, accent.copy(alpha = if (selected) 0.8f else 0.12f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(preset.label, style = MaterialTheme.typography.bodyMedium, color = SpectroColors.TextPrimary)
+        Text(
+            "$threads at once", style = MaterialTheme.typography.labelSmall,
+            color = if (selected) SpectroColors.BackdropCyan else SpectroColors.TextSecondary,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(preset.blurb, style = MaterialTheme.typography.bodySmall, color = SpectroColors.TextTertiary, textAlign = TextAlign.Center, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun PermissionRow(
+    title: String,
+    explanation: String,
+    granted: Boolean,
+    onAllow: () -> Unit,
+    tag: String,
+    grantedLabel: String = "Allowed",
+    deniedLabel: String = "Not allowed",
+) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag(tag), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = SpectroColors.TextPrimary)
+            Text(
+                if (granted) grantedLabel else deniedLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (granted) SpectroColors.Genuine else SpectroColors.Suspicious,
+            )
+            Text(explanation, style = MaterialTheme.typography.bodySmall, color = SpectroColors.TextTertiary)
+        }
+        if (!granted) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "ALLOW", style = MaterialTheme.typography.labelSmall, color = SpectroColors.BackdropCyan,
+                modifier = Modifier
+                    .testTag(tag + "-allow")
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, SpectroColors.BackdropCyan.copy(alpha = 0.6f), RoundedCornerShape(50))
+                    .clickable(onClick = onAllow)
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+            )
         }
     }
 }

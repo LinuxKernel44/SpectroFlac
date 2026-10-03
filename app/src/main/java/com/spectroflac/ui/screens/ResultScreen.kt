@@ -28,6 +28,9 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SaveAlt
+import androidx.compose.ui.platform.testTag
+import com.spectroflac.ui.components.GlassButton
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tune
@@ -77,6 +80,7 @@ fun ResultScreen(
     onShare: () -> Unit,
     onReanalyse: () -> Unit,
     onOpenSpectrogram: () -> Unit = {},
+    onExportImage: () -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -125,6 +129,16 @@ fun ResultScreen(
                         color = SpectroColors.TextTertiary,
                     )
                 }
+            }
+        }
+
+        if (report.technical != null) {
+            item {
+                GlassButton(
+                    "Export spectrogram image", onExportImage,
+                    icon = Icons.Filled.SaveAlt, accent = SpectroColors.BackdropMagenta,
+                    modifier = Modifier.fillMaxWidth().testTag("result-export-image"),
+                )
             }
         }
 

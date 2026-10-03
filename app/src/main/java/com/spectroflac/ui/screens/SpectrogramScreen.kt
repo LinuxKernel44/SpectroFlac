@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -132,7 +133,7 @@ private val TickStyle = TextStyle(fontSize = 10.sp, color = SpectroColors.TextTe
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SpectrogramScreen(report: AnalysisReport, onBack: () -> Unit) {
+fun SpectrogramScreen(report: AnalysisReport, onBack: () -> Unit, onExport: () -> Unit = {}) {
     val full = report.spectrogramFull
     Column(
         Modifier
@@ -176,6 +177,10 @@ fun SpectrogramScreen(report: AnalysisReport, onBack: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+            if (report.technical != null) {
+                GlassIconButton(Icons.Filled.SaveAlt, "Export image", onExport)
+                Spacer(Modifier.width(8.dp))
             }
             GlassIconButton(Icons.Filled.Refresh, "Reset zoom") {
                 view.reset()

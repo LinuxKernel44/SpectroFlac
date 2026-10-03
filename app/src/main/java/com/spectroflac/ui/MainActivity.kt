@@ -11,8 +11,16 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.documentfile.provider.DocumentFile
+import com.spectroflac.export.image.ExportState
+import com.spectroflac.export.image.ExportTarget
 import com.spectroflac.settings.AppSettings
+import com.spectroflac.ui.components.ExportDialog
+import com.spectroflac.ui.components.ExportProgressOverlay
+import com.spectroflac.util.formatBytes
+import com.spectroflac.ui.components.PermissionPrompt
 import com.spectroflac.ui.glass.LocalGlassEnabled
 import com.spectroflac.ui.screens.QueueScreen
 import com.spectroflac.ui.screens.SettingsScreen
@@ -155,26 +163,77 @@ private fun AppContent(viewModel: MainViewModel, settings: AppSettings) {
             viewModel.updateSettings { it.copy(autoExportFolder = uri.toString()) }
         }
     }
-    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    // ---- background permissions: asked once, when the first scan starts -------------------------
+    val permissions by rememberPermissionStatus()
+    val prefs = remember { context.getSharedPreferences("spectroflac_ui", Context.MODE_PRIVATE) }
+    var showPermissionPrompt by remember { mutableStateOf(false) }
+    var batteryAfterNotifications by remember { mutableStateOf(false) }
+    val createImage = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri ->
+        if (uri != null) viewModel.startSave(uri) else viewModel.cancelPendingSave()
+    }
+    val exportState by viewModel.exportJob.state.collectAsState()
 
-    viewModel.message?.let { text ->
-        LaunchedEffect(text) {
-            snackbar.showSnackbar(text)
-            viewModel.dismissMessage()
+    // The outcome of an export: share the finished image, or say where it went.
+    LaunchedEffect(exportState) {
+        when (val state = exportState) {
+            is ExportState.Done -> {
+                val size = formatBytes(state.result.bytes)
+                when (val target = state.target) {
+                    is ExportTarget.Share -> Exporter.shareImage(context, target.file, target.displayName)
+                    is ExportTarget.Document -> viewModel.showMessage(
+                        "Saved ${target.displayName} (${state.result.width} \u00D7 ${state.result.height}, $size)" +
+                            if (state.result.partial) " \u2014 the file was damaged, so only part of it is drawn" else "",
+                    )
+                }
+                viewModel.exportJob.acknowledge()
+            }
+            is ExportState.Failed -> {
+                viewModel.showMessage("Export failed: ${state.message}")
+                viewModel.exportJob.acknowledge()
+            }
+            else -> Unit
         }
     }
 
-    // The scan notification needs a permission on Android 13+: ask once, the first time a scan runs.
-    LaunchedEffect(queueActive, settings.backgroundScan) {
-        if (queueActive && settings.backgroundScan && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            val prefs = context.getSharedPreferences("spectroflac_ui", Context.MODE_PRIVATE)
-            if (!prefs.getBoolean("asked_notifications", false)) {
-                prefs.edit().putBoolean("asked_notifications", true).apply()
-                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        // Remember a refusal: Android will not show the dialog again, so Settings must open the system page instead.
+        if (!granted) prefs.edit().putBoolean("notifications_denied", true).apply()
+        if (batteryAfterNotifications) {
+            batteryAfterNotifications = false
+            if (!Permissions.batteryUnrestricted(context)) Permissions.requestBatteryExemption(context)
         }
+    }
+
+    fun requestNotifications() {
+        if (Permissions.needsRuntimeNotificationPermission && !prefs.getBoolean("notifications_denied", false)) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            Permissions.openNotificationSettings(context)
+        }
+    }
+
+    LaunchedEffect(queueActive) {
+        if (queueActive && !prefs.getBoolean("permissions_prompted", false) && !Permissions.status(context).allGranted) {
+            prefs.edit().putBoolean("permissions_prompted", true).apply()
+            showPermissionPrompt = true
+        }
+    }
+
+    if (showPermissionPrompt) {
+        PermissionPrompt(
+            notificationsMissing = !permissions.notifications,
+            batteryMissing = !permissions.battery,
+            onSkip = { showPermissionPrompt = false },
+            onContinue = {
+                showPermissionPrompt = false
+                if (!permissions.notifications && Permissions.needsRuntimeNotificationPermission) {
+                    batteryAfterNotifications = !permissions.battery
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else if (!permissions.battery) {
+                    Permissions.requestBatteryExemption(context)
+                }
+            },
+        )
     }
 
     val activity = context as? Activity
@@ -220,11 +279,13 @@ private fun AppContent(viewModel: MainViewModel, settings: AppSettings) {
                 },
                 onReanalyse = { viewModel.reanalyse(screen.report) },
                 onOpenSpectrogram = { viewModel.navigate(Screen.Spectrogram(screen.report)) },
+                onExportImage = { viewModel.openExportDialog(screen.report) },
             )
 
             is Screen.Spectrogram -> SpectrogramScreen(
                 report = screen.report,
                 onBack = viewModel::back,
+                onExport = { viewModel.openExportDialog(screen.report) },
             )
 
             is Screen.Queue -> QueueScreen(
@@ -259,6 +320,9 @@ private fun AppContent(viewModel: MainViewModel, settings: AppSettings) {
                 settings = settings,
                 cores = Runtime.getRuntime().availableProcessors(),
                 exportFolderName = exportFolderName,
+                permissions = permissions,
+                onRequestNotifications = ::requestNotifications,
+                onRequestBattery = { Permissions.requestBatteryExemption(context) },
                 onChange = viewModel::updateSettings,
                 onPickExportFolder = { pickExportFolder.launch(null) },
                 onReset = viewModel::resetSettings,
@@ -285,6 +349,19 @@ private fun AppContent(viewModel: MainViewModel, settings: AppSettings) {
 
         viewModel.progress?.let { progress ->
             AnalysisOverlay(progress, viewModel::cancel)
+        }
+
+        viewModel.exportDialogReport?.let { report ->
+            ExportDialog(
+                report = report,
+                onDismiss = viewModel::closeExportDialog,
+                onSave = { choice -> createImage.launch(viewModel.prepareSave(report, choice)) },
+                onShare = { choice -> viewModel.startShare(report, choice) },
+            )
+        }
+
+        (exportState as? ExportState.Running)?.let { running ->
+            ExportProgressOverlay(running, onCancel = viewModel.exportJob::cancel)
         }
 
         SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))

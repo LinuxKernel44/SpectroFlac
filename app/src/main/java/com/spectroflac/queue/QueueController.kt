@@ -92,6 +92,7 @@ class QueueController(
             dao.trimTo(s.historyLimit)
         }
         if (s.autoExport.csv || s.autoExport.json) autoExport(snapshot, s)
+        if (s.notifyOnFinish) AppNotifications.scanFinished(context, ScanSummary.from(snapshot.items))
     }
 
     /** Writes the CSV and/or JSON of the finished scan into the folder the user chose. */

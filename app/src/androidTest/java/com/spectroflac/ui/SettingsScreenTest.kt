@@ -19,6 +19,8 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.spectroflac.settings.AppSettings
 import com.spectroflac.settings.AutoExportFormat
+import com.spectroflac.queue.ThreadPreset
+import com.spectroflac.ui.PermissionStatus
 import com.spectroflac.ui.screens.SettingsScreen
 import com.spectroflac.ui.screens.SettingsTags
 import com.spectroflac.ui.theme.SpectroFlacTheme
@@ -38,12 +40,20 @@ class SettingsScreenTest {
     private var settings by mutableStateOf(AppSettings())
     private var resets = 0
     private var folderPicks = 0
+    private var notificationAsks = 0
+    private var batteryAsks = 0
 
-    private fun show(cores: Int = 8, folder: String? = null) {
+    private fun show(
+        cores: Int = 8,
+        folder: String? = null,
+        permissions: PermissionStatus = PermissionStatus(notifications = true, battery = true),
+    ) {
         rule.setContent {
             SpectroFlacTheme {
                 SettingsScreen(
                     settings = settings, cores = cores, exportFolderName = folder,
+                    permissions = permissions,
+                    onRequestNotifications = { notificationAsks++ }, onRequestBattery = { batteryAsks++ },
                     onChange = { transform -> settings = transform(settings) },
                     onPickExportFolder = { folderPicks++ }, onReset = { resets++ }, onBack = {},
                 )
@@ -129,5 +139,61 @@ class SettingsScreenTest {
         text("Reset all settings").performClick()
         assertEquals(1, resets)
         assertTrue(settings.backgroundScan)
+    }
+
+    @Test
+    fun theDefaultIsBalancedAndThePresetsShowTheirThreadCount() {
+        show(cores = 8)
+        rule.onNodeWithTag(SettingsTags.preset("Quiet")).assertExists()
+        rule.onNodeWithText("2 at once").assertExists()
+        rule.onNodeWithText("4 at once").assertExists()
+        rule.onNodeWithText("7 at once").assertExists()
+    }
+
+    @Test
+    fun tappingAPresetAppliesItAndTheCardFollowsTheSettings() {
+        show(cores = 8)
+        rule.onNodeWithTag(SettingsTags.preset("Fast")).performClick()
+        assertEquals(7, settings.parallelFiles)
+        assertFalse(settings.lowPriorityThreads)
+        rule.onNodeWithTag(SettingsTags.preset("Quiet")).performClick()
+        assertEquals(2, settings.parallelFiles)
+        assertTrue(settings.lowPriorityThreads)
+        rule.onNodeWithTag(SettingsTags.preset("Balanced")).performClick()
+        assertEquals(AppSettings.AUTO, settings.parallelFiles)
+    }
+
+    @Test
+    fun aHandPickedNumberLeavesNoPresetHighlightedButStillWorks() {
+        show(cores = 8)
+        rule.onNodeWithTag(SettingsTags.parallelChip("6")).performClick()
+        assertEquals(6, settings.parallelFiles)
+        assertEquals(null, com.spectroflac.queue.Parallelism.currentPreset(settings, 8))
+    }
+
+    @Test
+    fun notifyWhenAScanFinishesIsOnByDefaultAndCanBeSwitchedOff() {
+        show()
+        toggleOf(SettingsTags.NOTIFY).assertIsOn()
+        toggleOf(SettingsTags.NOTIFY).performClick()
+        assertFalse(settings.notifyOnFinish)
+    }
+
+    @Test
+    fun grantedPermissionsShowNoAllowButton() {
+        show(permissions = PermissionStatus(notifications = true, battery = true))
+        node(hasTestTag(SettingsTags.PERMISSION_NOTIFICATIONS)).assertExists()
+        rule.onNodeWithTag(SettingsTags.PERMISSION_NOTIFICATIONS + "-allow").assertDoesNotExist()
+        rule.onNodeWithTag(SettingsTags.PERMISSION_BATTERY + "-allow").assertDoesNotExist()
+    }
+
+    @Test
+    fun missingPermissionsOfferAnAllowButtonEach() {
+        show(permissions = PermissionStatus(notifications = false, battery = false))
+        node(hasTestTag(SettingsTags.PERMISSION_NOTIFICATIONS + "-allow")).performClick()
+        node(hasTestTag(SettingsTags.PERMISSION_BATTERY + "-allow")).performClick()
+        assertEquals(1, notificationAsks)
+        assertEquals(1, batteryAsks)
+        node(hasText("Optimized")).assertExists()
     }
 }
