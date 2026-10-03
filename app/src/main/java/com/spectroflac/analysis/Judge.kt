@@ -20,22 +20,35 @@ object Judge {
     /** A wall has to drop at least this much to count as an encoder cut rather than a roll-off. */
     private const val WALL_DB = 26.0
 
-    fun spectral(m: AnalysisMeasurements): SpectralInfo {
-        val reasoning = mutableListOf<String>()
-        val bins = m.peakSpectrumDb.size
-        val smooth = smoothDb(m.peakSpectrumDb, 2)
+    /** Where a spectrum stops: the edge of a brick wall, or else the top of the content. */
+    class Edge(
+        val cutoffBin: Int,
+        val hasWall: Boolean,
+        val dropDb: Double,
+        val belowDb: Double,
+        val aboveDb: Double,
+        val peakDb: Double,
+        val topFloorDb: Double,
+    )
 
-        val lowBin = m.binOf(100.0).coerceAtLeast(1)
+    /**
+     * The step detector, shared by the verdict (on the mono mix) and the joint-stereo test (on the
+     * side channel): for every bin, how much louder is the 1.2 kHz below it than the 1.2 kHz above?
+     */
+    fun findEdge(peakSpectrumDb: DoubleArray, binHz: Double, nyquist: Double): Edge {
+        val bins = peakSpectrumDb.size
+        fun binOf(hz: Double) = (hz / binHz).toInt().coerceIn(0, bins - 1)
+        val smooth = smoothDb(peakSpectrumDb, 2)
+
+        val lowBin = binOf(100.0).coerceAtLeast(1)
         var peak = -200.0
         for (b in lowBin until bins) if (smooth[b] > peak) peak = smooth[b]
 
         val floorStart = (bins * 0.97).toInt().coerceIn(lowBin, bins - 1)
         val hfFloor = median(smooth, floorStart, bins - 1)
 
-        // Step detector: for every bin, how much louder is the 1.2 kHz below it than the 1.2 kHz
-        // above it? A lossy cut is a step of 30 dB or more; a natural roll-off is a few dB.
-        val w = m.binOf(1200.0).coerceAtLeast(2)
-        val searchFrom = maxOf(lowBin + w, m.binOf(m.nyquist * 0.08))
+        val w = binOf(1200.0).coerceAtLeast(2)
+        val searchFrom = maxOf(lowBin + w, binOf(nyquist * 0.08))
         val searchTo = bins - 1 - w / 2
         var wallBin = -1
         var wallDrop = 0.0
@@ -80,6 +93,20 @@ object Judge {
             edge
         } else contentTop
 
+        return Edge(cutoffBin, hasWall, wallDrop, wallBelow, wallAbove, peak, hfFloor)
+    }
+
+    fun spectral(m: AnalysisMeasurements): SpectralInfo {
+        val reasoning = mutableListOf<String>()
+        val edge = findEdge(m.peakSpectrumDb, m.binHz, m.nyquist)
+        val hasWall = edge.hasWall
+        val wallDrop = edge.dropDb
+        val wallBelow = edge.belowDb
+        val wallAbove = edge.aboveDb
+        val peak = edge.peakDb
+        val hfFloor = edge.topFloorDb
+        val cutoffBin = edge.cutoffBin
+
         val cutoffHz = m.frequencyOf(cutoffBin)
         val ratio = cutoffHz / m.nyquist
 
@@ -120,21 +147,25 @@ object Judge {
     }
 
     /**
-     * Maps a measured cut to the encoder settings known to produce it. The measured edge sits a
-     * few hundred hertz above the encoder's nominal cutoff (it is the half-way point of the step),
-     * so these bands are shifted up to match.
+     * Maps a measured cut to the encoders known to produce it. The measured edge is the half-way
+     * point of the step, and the bands below come from round-tripping full-band stereo noise through
+     * libmp3lame (CBR and VBR), FFmpeg's native AAC, libvorbis and libopus at 44.1 and 48 kHz, then
+     * measuring where each ended up. Several encoders share most cut frequencies, so a cut can only
+     * ever suggest candidates, never name one. A very high bitrate leaves no cut at all on this test
+     * (AAC 256+, LAME V0, Vorbis q6+), which is why a clean spectrum proves nothing about those.
      */
-    private fun lossySourceGuess(cutoffHz: Double): String? {
+    internal fun lossySourceGuess(cutoffHz: Double): String? {
         val k = cutoffHz / 1000.0
         return when {
-            k < 11.7 -> "a very low bitrate lossy source (64 kbps or below)"
-            k < 14.9 -> "MP3 80–96 kbps or AAC 64 kbps"
-            k < 16.0 -> "MP3 112 kbps or AAC 96 kbps"
-            k < 17.0 -> "MP3 128 kbps (LAME default) or Vorbis ~q3"
-            k < 17.9 -> "MP3 160 kbps or AAC 128 kbps"
-            k < 19.0 -> "MP3 192 kbps or AAC 160 kbps"
-            k < 20.0 -> "MP3 224–256 kbps or AAC 192 kbps"
-            k < 21.0 -> "MP3 320 kbps / LAME V0 or AAC 256 kbps"
+            k < 9.0 -> "a very low bitrate lossy source (MP3 V9 or 48 kbps and below)"
+            k < 13.5 -> "MP3 64 kbps or AAC 64 kbps"
+            k < 15.0 -> "MP3 80 kbps or a similar low-bitrate encode"
+            k < 16.2 -> "MP3 96–112 kbps (or V7), Vorbis q0 or AAC ~80 kbps"
+            k < 17.0 -> "MP3 128 kbps (LAME default or V5–V6), Vorbis q2 or AAC 96 kbps"
+            k < 17.9 -> "MP3 160 kbps (or V4), Vorbis q3 or AAC 128 kbps"
+            k < 19.25 -> "MP3 192 kbps (or V2) or Vorbis q4"
+            k < 19.9 -> "MP3 224–256 kbps or AAC 160–192 kbps"
+            k < 20.9 -> "Opus at any bitrate, MP3 320 kbps / LAME V0 or Vorbis q5"
             k < 21.8 -> "a high-bitrate lossy source (AAC 320, Vorbis q8+)"
             else -> null
         }
@@ -166,6 +197,7 @@ object Judge {
         integrity: IntegrityInfo,
         dynamics: DynamicsInfo,
         measurements: AnalysisMeasurements,
+        jointStereo: JointStereoInfo? = null,
     ): Triple<Verdict, Int, List<Finding>> {
         val findings = mutableListOf<Finding>()
         var verdict = Verdict.AUTHENTIC
@@ -372,6 +404,29 @@ object Judge {
                 "Both channels are sample-for-sample identical: the file is mono stored as stereo.",
             )
         }
+        measurements.stereo?.takeUnless { dynamics.dualMono }?.let { stereo ->
+            findings += stereoFindings(stereo)
+        }
+        jointStereo?.takeIf { it.suspected }?.let { joint ->
+            val lossyAlready = verdict == Verdict.FAKE && spectral.hasBrickWall
+            findings += Finding(
+                if (lossyAlready) Severity.INFO else Severity.WARNING,
+                "Joint-stereo coding artifacts",
+                buildString {
+                    if (joint.sideBandLimited) {
+                        append("The side channel stops at %.1f kHz while the mid channel reaches %.1f kHz. "
+                            .fmt(joint.sideCutoffHz / 1000, joint.midCutoffHz / 1000))
+                    }
+                    joint.collapseDb?.takeIf { it >= StereoAnalysis.COLLAPSE_DB }?.let {
+                        append("The stereo image narrows by %.0f dB between the mid range and the treble. ".fmt(it))
+                    }
+                    append(
+                        if (lossyAlready) "That is how MP3 and AAC joint-stereo modes behave, and it fits the lossy source found above."
+                        else "That is how MP3 and AAC joint-stereo modes behave. It is not proof on its own, but a genuine lossless master rarely does this.",
+                    )
+                },
+            )
+        }
         if (dynamics.silentRatio > 0.5) {
             findings += Finding(
                 Severity.INFO,
@@ -396,6 +451,48 @@ object Judge {
         return Triple(verdict, confidence.coerceIn(0, 99), findings.sortedBy { order.indexOf(it.severity) })
     }
 
+    private fun stereoFindings(stereo: StereoInfo): List<Finding> {
+        val out = mutableListOf<Finding>()
+        val silent = stereo.silentChannel
+        if (silent != null) {
+            val name = if (silent == 0) "left" else "right"
+            out += Finding(
+                Severity.WARNING,
+                "The $name channel is silent",
+                "Only one channel carries signal, so the file plays on one side only.",
+            )
+            return out
+        }
+        when {
+            stereo.correlation < 0.0 -> out += Finding(
+                Severity.WARNING,
+                "Channels are mostly out of phase",
+                "Left and right correlate at %.2f. Played in mono, much of the signal would cancel out."
+                    .fmt(stereo.correlation),
+            )
+            stereo.negativeRatio > 0.25 -> out += Finding(
+                Severity.INFO,
+                "Out-of-phase passages",
+                "%.0f %% of the track has left and right in opposite polarity, which hurts mono playback."
+                    .fmt(stereo.negativeRatio * 100),
+            )
+            stereo.correlation > 0.98 -> out += Finding(
+                Severity.INFO,
+                "Nearly mono",
+                "Left and right correlate at %.3f: the stereo image is almost non-existent.".fmt(stereo.correlation),
+            )
+        }
+        if (abs(stereo.balanceDb) >= 6.0) {
+            out += Finding(
+                Severity.INFO,
+                "Unbalanced channels",
+                "The ${if (stereo.balanceDb > 0) "left" else "right"} channel is %.1f dB louder than the other."
+                    .fmt(abs(stereo.balanceDb)),
+            )
+        }
+        return out
+    }
+
     fun summarise(verdict: Verdict, spectral: SpectralInfo?, integrity: IntegrityInfo?): String = when (verdict) {
         Verdict.AUTHENTIC -> buildString {
             append("Everything checks out: full-bandwidth audio")
@@ -411,7 +508,7 @@ object Judge {
         Verdict.ERROR -> "The file could not be analysed."
     }
 
-    private fun smoothDb(src: DoubleArray, radius: Int): DoubleArray {
+    internal fun smoothDb(src: DoubleArray, radius: Int): DoubleArray {
         val out = DoubleArray(src.size)
         for (i in src.indices) {
             var sum = 0.0
@@ -427,7 +524,7 @@ object Judge {
         return out
     }
 
-    private fun median(src: DoubleArray, from: Int, to: Int): Double {
+    internal fun median(src: DoubleArray, from: Int, to: Int): Double {
         if (from > to) return src.getOrElse(from) { -200.0 }
         val slice = src.copyOfRange(from, to + 1)
         slice.sort()

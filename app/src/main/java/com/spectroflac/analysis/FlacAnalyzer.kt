@@ -148,8 +148,9 @@ class FlacAnalyzer(private val context: Context) {
             )
 
             val spectral = Judge.spectral(m)
+            val jointStereo = StereoAnalysis.jointStereo(m)
             val (verdict, confidence, findings) =
-                Judge.assess(ContainerKind.FLAC, technical, spectral, integrity, dynamics, m)
+                Judge.assess(ContainerKind.FLAC, technical, spectral, integrity, dynamics, m, jointStereo)
 
             return AnalysisReport(
                 fileName = name,
@@ -175,6 +176,10 @@ class FlacAnalyzer(private val context: Context) {
                 ),
                 analysedAtMillis = System.currentTimeMillis(),
                 analysisDurationMillis = System.currentTimeMillis() - started,
+                stereo = m.stereo,
+                jointStereo = jointStereo,
+                spectrumCurves = StereoAnalysis.curves(m),
+                spectrogramFull = m.fullSpectrogram,
             )
         }
     }

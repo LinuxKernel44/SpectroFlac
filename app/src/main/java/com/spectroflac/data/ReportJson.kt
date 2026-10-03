@@ -5,6 +5,8 @@ import com.spectroflac.analysis.DynamicsInfo
 import com.spectroflac.analysis.EncoderInfo
 import com.spectroflac.analysis.Finding
 import com.spectroflac.analysis.IntegrityInfo
+import com.spectroflac.analysis.JointStereoInfo
+import com.spectroflac.analysis.StereoInfo
 import com.spectroflac.analysis.Severity
 import com.spectroflac.analysis.SpectralInfo
 import com.spectroflac.analysis.TechnicalInfo
@@ -15,8 +17,8 @@ import org.json.JSONObject
 
 /**
  * Serialises a report so it can be stored in the history database and exported as JSON.
- * The cover art and the spectrogram are deliberately left out: they are large, and the history
- * screen offers a re-analysis instead.
+ * The cover art, the spectrogram, the spectrum curves and the correlation timeline are deliberately
+ * left out: they are large, and the history screen offers a re-analysis instead.
  */
 object ReportJson {
 
@@ -120,6 +122,30 @@ object ReportJson {
                 put("dualMono", d.dualMono)
             })
         }
+        report.stereo?.let { st ->
+            put("stereo", JSONObject().apply {
+                put("correlation", st.correlation)
+                put("balanceDb", st.balanceDb)
+                put("widthDb", st.widthDb)
+                put("midRmsDbfs", st.midRmsDbfs)
+                put("sideRmsDbfs", st.sideRmsDbfs)
+                put("negativeRatio", st.negativeRatio)
+                put("silentChannel", st.silentChannel ?: JSONObject.NULL)
+            })
+        }
+        report.jointStereo?.let { j ->
+            put("jointStereo", JSONObject().apply {
+                put("midCutoffHz", j.midCutoffHz)
+                put("sideCutoffHz", j.sideCutoffHz)
+                put("sideWallDropDb", j.sideWallDropDb)
+                put("sideBandLimited", j.sideBandLimited)
+                put("sideToMidLowDb", j.sideToMidLowDb ?: JSONObject.NULL)
+                put("sideToMidHighDb", j.sideToMidHighDb ?: JSONObject.NULL)
+                put("collapseDb", j.collapseDb ?: JSONObject.NULL)
+                put("suspected", j.suspected)
+                put("reasoning", JSONArray(j.reasoning))
+            })
+        }
         put("tags", JSONObject().also { tags -> report.tags.forEach { (k, v) -> tags.put(k, v) } })
     }
 
@@ -212,6 +238,30 @@ object ReportJson {
                 dualMono = d.optBoolean("dualMono"),
             )
         }
+        val stereo = json.optJSONObject("stereo")?.let { st ->
+            StereoInfo(
+                correlation = st.optDouble("correlation", 0.0),
+                balanceDb = st.optDouble("balanceDb", 0.0),
+                widthDb = st.optDouble("widthDb", 0.0),
+                midRmsDbfs = st.optDouble("midRmsDbfs", -200.0),
+                sideRmsDbfs = st.optDouble("sideRmsDbfs", -200.0),
+                negativeRatio = st.optDouble("negativeRatio", 0.0),
+                silentChannel = if (st.isNull("silentChannel")) null else st.optInt("silentChannel"),
+            )
+        }
+        val jointStereo = json.optJSONObject("jointStereo")?.let { j ->
+            JointStereoInfo(
+                midCutoffHz = j.optDouble("midCutoffHz", 0.0),
+                sideCutoffHz = j.optDouble("sideCutoffHz", 0.0),
+                sideWallDropDb = j.optDouble("sideWallDropDb", 0.0),
+                sideBandLimited = j.optBoolean("sideBandLimited"),
+                sideToMidLowDb = j.optDoubleOrNull("sideToMidLowDb"),
+                sideToMidHighDb = j.optDoubleOrNull("sideToMidHighDb"),
+                collapseDb = j.optDoubleOrNull("collapseDb"),
+                suspected = j.optBoolean("suspected"),
+                reasoning = j.optJSONArray("reasoning").toStringList(),
+            )
+        }
         val tags = LinkedHashMap<String, String>()
         json.optJSONObject("tags")?.let { t ->
             t.keys().forEach { key -> tags[key] = t.optString(key) }
@@ -238,8 +288,12 @@ object ReportJson {
             analysedAtMillis = json.optLong("analysedAt"),
             analysisDurationMillis = json.optLong("analysisMillis"),
             errorMessage = json.optStringOrNull("error"),
+            stereo = stereo,
+            jointStereo = jointStereo,
         )
     }
+
+    private fun JSONObject.optDoubleOrNull(key: String): Double? = if (isNull(key)) null else optDouble(key)
 
     private fun JSONObject.optStringOrNull(key: String): String? =
         if (isNull(key)) null else optString(key).takeIf { it.isNotEmpty() }

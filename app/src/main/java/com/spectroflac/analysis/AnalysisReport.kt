@@ -123,6 +123,11 @@ data class AnalysisReport(
     val analysedAtMillis: Long,
     val analysisDurationMillis: Long,
     val errorMessage: String? = null,
+    val stereo: StereoInfo? = null,
+    val jointStereo: JointStereoInfo? = null,
+    /** In-memory only, like [spectrogram]: re-analysing restores them for a history entry. */
+    val spectrumCurves: SpectrumCurves? = null,
+    val spectrogramFull: SpectrogramFull? = null,
 ) {
     val title: String? get() = tags["TITLE"]
     val artist: String? get() = tags["ARTIST"] ?: tags["ALBUMARTIST"]

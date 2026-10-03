@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import com.spectroflac.analysis.AnalysisReport
 import com.spectroflac.analysis.Severity
+import com.spectroflac.analysis.StereoAnalysis
 import com.spectroflac.data.ReportJson
 import com.spectroflac.util.formatBytes
 import com.spectroflac.util.formatDb
@@ -75,6 +76,19 @@ object Exporter {
             s.reasoning.forEach { appendLine("  - $it") }
             appendLine()
         }
+        report.stereo?.let { st ->
+            appendLine("STEREO")
+            appendLine("-".repeat(52))
+            appendLine("Correlation     : ${String.format(Locale.US, "%.2f", st.correlation)} (${StereoAnalysis.describeCorrelation(st.correlation)})")
+            appendLine("Balance         : ${String.format(Locale.US, "%+.1f dB (positive = left louder)", st.balanceDb)}")
+            appendLine("Side vs mid     : ${formatDb(st.widthDb)}")
+            appendLine("Out of phase    : ${percent(st.negativeRatio)} of the track")
+            report.jointStereo?.let { j ->
+                appendLine("Joint stereo    : ${if (j.suspected) "artifacts suspected" else "no artifacts"}")
+                j.reasoning.forEach { appendLine("  - $it") }
+            }
+            appendLine()
+        }
         report.integrity?.let { i ->
             appendLine("INTEGRITY")
             appendLine("-".repeat(52))
@@ -119,7 +133,7 @@ object Exporter {
         "file", "verdict", "confidence", "bits", "sample_rate", "channels", "duration_s",
         "bitrate_kbps", "size_bytes", "cutoff_hz", "step_db", "brick_wall", "source_guess",
         "md5_present", "md5_match", "crc_errors", "peak_dbfs", "rms_dbfs", "dr", "clipped_samples",
-        "effective_bits", "artist", "album", "title", "summary",
+        "effective_bits", "stereo_correlation", "balance_db", "joint_stereo", "artist", "album", "title", "summary",
     )
 
     fun csv(reports: List<AnalysisReport>): String = buildString {
@@ -151,6 +165,9 @@ object Exporter {
                 d?.dynamicRangeDb?.let { Math.round(it).toString() }.orEmpty(),
                 d?.clippedSamples?.toString().orEmpty(),
                 d?.effectiveBitDepth?.toString().orEmpty(),
+                r.stereo?.correlation?.let { String.format(Locale.US, "%.2f", it) }.orEmpty(),
+                r.stereo?.balanceDb?.let { String.format(Locale.US, "%.1f", it) }.orEmpty(),
+                r.jointStereo?.suspected?.toString().orEmpty(),
                 r.artist.orEmpty(),
                 r.album.orEmpty(),
                 r.title.orEmpty(),

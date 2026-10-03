@@ -32,6 +32,8 @@ class JudgeTest {
                 if (file.name.startsWith("not_a_")) continue else throw it
             }
             val (verdict, confidence, spectral, findings) = outcome
+            val stereo = outcome.stereo
+            val joint = outcome.joint
             println(
                 "%-28s %-11s %3d%%  cut %6.0f Hz (%3.0f%% of Nyq)  step %5.1f dB %-5s %s".format(
                     file.name, verdict.short, confidence, spectral.cutoffHz, spectral.cutoffRatio * 100,
@@ -39,6 +41,20 @@ class JudgeTest {
                     spectral.sourceGuess ?: "",
                 )
             )
+            if (stereo != null) {
+                println(
+                    "      stereo: corr %5.2f  balance %5.1f dB  width %6.1f dB  neg %3.0f%%  joint: %s".format(
+                        stereo.correlation, stereo.balanceDb, stereo.widthDb, stereo.negativeRatio * 100,
+                        joint?.let {
+                            "side %.0f Hz / mid %.0f Hz, side step %.1f dB, S-M low %s high %s, collapse %s -> %s".format(
+                                it.sideCutoffHz, it.midCutoffHz, it.sideWallDropDb, it.sideToMidLowDb?.let { v -> "%.1f".format(v) },
+                                it.sideToMidHighDb?.let { v -> "%.1f".format(v) }, it.collapseDb?.let { v -> "%.1f".format(v) },
+                                if (it.suspected) "SUSPECTED" else "ok",
+                            )
+                        } ?: "n/a",
+                    ),
+                )
+            }
             findings.filter { it.severity == Severity.CRITICAL || it.severity == Severity.WARNING }
                 .forEach { println("      ${it.severity}: ${it.title}") }
 
@@ -57,6 +73,8 @@ class JudgeTest {
         val confidence: Int,
         val spectral: SpectralInfo,
         val findings: List<Finding>,
+        val stereo: StereoInfo?,
+        val joint: JointStereoInfo?,
     )
 
     private fun analyse(file: File): Outcome {
@@ -86,9 +104,10 @@ class JudgeTest {
                 m.unusedLowBits, m.dualMono,
             )
             val spectral = Judge.spectral(m)
+            val joint = StereoAnalysis.jointStereo(m)
             val (verdict, confidence, findings) =
-                Judge.assess(ContainerKind.FLAC, technical, spectral, integrity, dynamics, m)
-            return Outcome(verdict, confidence, spectral, findings)
+                Judge.assess(ContainerKind.FLAC, technical, spectral, integrity, dynamics, m, joint)
+            return Outcome(verdict, confidence, spectral, findings, m.stereo, joint)
         }
     }
 }
