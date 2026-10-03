@@ -171,7 +171,14 @@ Requires `keystore.properties` at the project root (gitignored, never committed 
 `keyPassword`). Without it, `assembleRelease` still produces an APK, just unsigned — the script
 refuses to publish that (`apksigner verify` gate).
 
-**The signing keystore is the one thing in this project that cannot be regenerated.** If it's
+**Two signing keys exist.** v1.0.0 was signed with `~/.spectroflac/spectroflac.jks` (password not on this
+machine any more, never recovered). v1.1.0 onward is signed with a **new** key,
+`~/.spectroflac/spectroflac-v2.jks` (alias `spectroflac`, created 2026-10-03 at the user's explicit request;
+its password is in `~/spectroflac-keystore-password.txt`, outside the repo, and `keystore.properties` points at
+it). Android refuses to update a v1.0.0 install with a v1.1.0 APK, so v1.0.0 must be uninstalled first — the
+release notes say so. Keep both keystores; releases from now on must use the v2 key.
+
+**A signing keystore is the one thing in this project that cannot be regenerated.** If it's
 lost, no future release can update an existing SpectroFlac install on a device — users would have
 to uninstall and reinstall. It intentionally lives outside the repo; don't try to "fix" that by
 committing it or copying it into a tracked path.
