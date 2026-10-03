@@ -60,6 +60,12 @@ app/src/main/java/com/spectroflac/
 │                   detector, `lossySourceGuess` fingerprint table), StereoAnalysis (stereo
 │                   statistics, joint-stereo test, spectrum curves), StereoModels, FlacAnalyzer
 │                   (orchestrates decode+analyze for one file), AnalysisReport (the result model)
+├── queue/          AnalysisQueue (the scan queue engine, no Android deps: scheduling, parallelism,
+│                   pause/cancel/retry/reorder, skip-known, per-file + overall progress),
+│                   EtaEstimator, Parallelism (Auto / thermal / battery rules), QueueController
+│                   (settings + device state -> queue; history, restore, auto-export), ScanService
+│                   (foreground service + notification + wake lock), DeviceMonitor, QueueStore, FileInfo
+├── settings/       AppSettings + SettingsRepository (DataStore)
 ├── data/           Room entity/DAO for local history, JSON (de)serialization of a report
 ├── export/         Exporter — text report, CSV, JSON, share intents
 └── ui/
@@ -68,7 +74,7 @@ app/src/main/java/com/spectroflac/
     │               failure)
     ├── theme/      Dark-only color scheme and typography
     ├── screens/    HomeScreen, ResultScreen, SpectrogramScreen (interactive: pinch/pan/cursor),
-    │               ListScreens (Batch/History/AnalysisOverlay)
+    │               QueueScreen, SettingsScreen, ListScreens (History/AnalysisOverlay)
     ├── components/ Shared building blocks (buttons, cards, spectrogram strip, verdict badge),
     │               Charts (spectrum chart, correlation timeline, ToggleChip)
     ├── MainActivity.kt   intent handling (VIEW/SEND), screen routing
@@ -95,6 +101,39 @@ file mean those low bits never carried signal — that's `effectiveBitDepth` /
 
 If you touch the thresholds in `Judge.kt`, **you must re-run `JudgeTest` against real encoder
 output**, not just synthetic signals — see Testing.
+
+### The scan queue and multi-threading (1.2.0)
+
+The queue lives in `SpectroFlacApp` (not a ViewModel) so a scan survives screen changes and the foreground
+service keeps the process alive. `AnalysisQueue` has no Android dependencies on purpose: the analysis, the
+worker dispatcher and every device rule are injected, and `AnalysisQueueTest` drives it with gate-controlled
+fake analysers (deterministic, no sleeps for correctness). Keep it that way.
+
+Decisions worth knowing:
+
+- Parallelism = several *files* at once; one file stays on one thread (a FLAC stream decodes sequentially).
+  Auto = half the cores. Thermal protection lowers both Auto and a fixed number; Battery Saver only lowers Auto.
+  A queue holds new files back at critical heat (`setHold`), never kills running ones.
+- Finished items keep a `light()` report (no cover, spectrograms or curves): hundreds of full reports would
+  run out of memory. Opening one re-analyses it (`MainViewModel.openQueueItem`).
+- ETA = bytes processed over a 20 s sliding window (`EtaEstimator`); it resets on pause/idle and when the
+  processed total drops (a cancelled file), and is null ("Estimating…") for the first 3 s.
+- A cancelled decode returns a truncated report instead of throwing: `AnalysisQueue.run` calls `ensureActive()`
+  after `analyze` and drops it. Do not remove that.
+- List rows use `FlatPanel`, not `GlassPanel`: a refraction shader per row is wasted work in long lists.
+- `QueueController` saves the unfinished files **after** the delay from the *latest* snapshot; saving the
+  snapshot captured before the delay never fired during a busy scan (found on the emulator).
+- History keys live in the JSON blob (`sourceModified`, `analyzerVersion`), not in new Room columns: the
+  database uses `fallbackToDestructiveMigration`, so a schema change would wipe the user's history.
+- The foreground service is `dataSync` (Android 15 gives it a 6 h limit; `onTimeout` just stops it, the queue
+  continues in-process). Starting it is wrapped in `runCatching` (background-start restrictions).
+- Testing on the emulator: the animated home backdrop never lets the UI thread idle, which hangs
+  `ActivityScenario`/Espresso — `ScanDemoDriver` turns it off in settings first. The emulator's folder picker
+  refuses the storage root and the Download folder itself ("choose another folder"); Documents works.
+  `scripts/e2e-queue.sh` pushes real FLAC files into the debug app and runs `QueueEndToEndTest`.
+- On a 4-core emulator, 12 files: 7.9 s with 1 thread, 2.8 s with 4 (x2.8). Nothing here has run on a real
+  phone (the user's OnePlus 15 was not available), so the Auto default and the heat thresholds are untested on
+  real hardware.
 
 ### Calibration on real music (2026-10-03)
 

@@ -29,7 +29,7 @@
   <img src="https://img.shields.io/badge/Room-Database-4285F4?style=flat-square" alt="Room">
   <img src="https://img.shields.io/badge/FFT-Spectral%20Analysis-orange?style=flat-square" alt="FFT">
   <img src="https://img.shields.io/badge/100%25-Offline-success?style=flat-square" alt="Offline">
-  <img src="https://img.shields.io/badge/No-Permissions-success?style=flat-square" alt="No permissions">
+  <img src="https://img.shields.io/badge/No-Network-success?style=flat-square" alt="No network access">
 </p>
 
 ---
@@ -82,13 +82,17 @@ Instead of simply saying *"lossless"* or *"lossy"*, SpectroFlac provides the mea
 * 🏷️ **Metadata and tags**
 * 🖼️ **Embedded cover art**
 * 📁 **Recursive folder scanning**
+* 🧵 **Parallel analysis** — several files at once (Auto, or 1–8), with heat and battery protection
+* 📋 **Scan queue** — per-file and overall progress, time left, pause / cancel / retry / reorder
+* 🔔 **Background scans** with a progress notification
+* ⚙️ **Settings** — performance, queue, history, auto-export, appearance
 * 📤 **CSV / JSON export**
 * 🕘 **Local analysis history**
 * 📱 **Android share-sheet integration**
 * 🪟 **Liquid glass UI**
 * 🔒 **100% offline**
 * 🚫 **No network access**
-* 🚫 **No special permissions**
+* 🚫 **No dangerous permissions** — only a notification for background scans
 
 ---
 
@@ -399,19 +403,38 @@ will not be treated as a valid FLAC.
 
 ---
 
-### Scan a folder
+### Scan a folder, or several files
 
-Select a directory and SpectroFlac recursively analyzes its `.flac` files.
+Select a directory and SpectroFlac recursively analyzes its `.flac` files; or pick several files at once, or share several files to the app from a file manager. A single file still opens straight on its result; two or more go through the **scan queue**.
 
-Results include:
+Files are queued while the folder is still being listed, so analysis starts immediately. More files or folders can be added while a scan runs.
 
-* total files;
-* genuine files;
-* suspicious files;
-* invalid files;
-* analysis statistics;
-* CSV export;
-* JSON export.
+### The scan queue
+
+* an **overall bar** with `37 / 120 files`, a percentage and the **time left** (computed from the bytes processed over the last seconds, so it already reflects how many files run in parallel; "Estimating…" until a few seconds of data exist);
+* one **progress bar per running file**, each with its own cancel button;
+* the **waiting** files, with a menu to analyse one next or remove it;
+* the **finished** files, filterable (genuine, suspicious, not genuine, damaged, errors) and sortable, with CSV / JSON export;
+* **Pause / Resume**, **Cancel all**, **Retry failed**, **Clear finished**.
+
+A finished file keeps only its verdict and numbers, so a scan of thousands of files stays light on memory; tapping one re-analyzes it in a couple of seconds to rebuild the spectrogram and charts.
+
+### Multi-threading
+
+A FLAC file decodes sequentially, so parallelism means **several files analysed at the same time**; one file always stays on one thread. **Auto** runs half of the phone's cores (4 on an 8-core phone), fewer when the phone gets hot or Battery Saver is on; a fixed number from 1 to 8 can be chosen instead. On a 4-core emulator the same 12 files took 7.9 s with 1 thread and 2.8 s with 4 (×2.8).
+
+### Background scans
+
+While a scan runs, a **foreground service** with one progress notification keeps it going with the screen off (and holds a partial wake lock). It stops by itself when the queue is empty. It can be turned off in Settings.
+
+### Settings
+
+| Section | Options |
+|---|---|
+| **Performance** | files at once (Auto / 1–8), background scan, thermal protection, low-priority threads, keep the screen on, pause below a battery level |
+| **Queue** | skip files already analysed (unchanged file, same app version), offer to resume after a restart (default: start fresh) |
+| **Results and history** | history size, delete analyses older than N days, auto-export a CSV / JSON into a chosen folder when a scan ends |
+| **Appearance** | liquid glass effects, animated backdrop |
 
 ---
 
@@ -475,9 +498,11 @@ SpectroFlac is designed to work entirely offline.
 * ❌ User accounts
 * ❌ Cloud processing
 * ❌ Audio uploads
-* ❌ Special storage permissions
+* ❌ Storage permissions
 
 Files are accessed through Android's **Storage Access Framework** and analyzed locally.
+
+For background scans the app declares a foreground service (data sync), a wake lock and the notification permission (Android 13+). The notification permission is requested once, the first time a scan starts; if it is refused, scans still run, just without a visible notification. None of these give the app access to anything outside the files you pick.
 
 ---
 
@@ -604,7 +629,13 @@ limit_*.flac → no expectation (encodes the spectral test cannot see)
 
 Synthetic tests (stereo statistics, the fingerprint table, per-channel layers) need no samples and always run.
 
-The interactive spectrogram has instrumented Compose tests that drive it with real touch gestures — horizontal, vertical and diagonal pinch, pan, double-tap, cursor. They need a device or emulator:
+The queue engine (scheduling, parallelism limit, pause, cancel, reorder, retry, thermal hold, skip-known, statistics, time-left estimator) has plain JVM tests with controllable fake analysers, so no device is needed.
+
+On a device or emulator there are instrumented tests:
+
+* the interactive spectrogram, driven with real touch gestures — horizontal, vertical and diagonal pinch, pan, double-tap, cursor;
+* the queue and settings screens (what is shown, what each control reports);
+* an end-to-end run of the real queue, analyser, settings and database over real FLAC files: parallelism limits, per-file progress, pause/resume, cancel, skip-known, queue saving, and a timing check that parallel is really faster (`scripts/e2e-queue.sh` prepares the files).
 
 ```bash
 ./gradlew :app:connectedDebugAndroidTest
@@ -680,17 +711,17 @@ The application exposes the measurements behind the verdict rather than hiding t
 
 ## 🗺️ Roadmap
 
+### Done in 1.2.0
+
+* [x] Parallel analysis of several files
+* [x] Scan queue with per-file and overall progress, time left, pause / cancel / retry / reorder
+* [x] Background scans with a progress notification
+* [x] Settings (performance, queue, history, auto-export, appearance)
+* [x] Pick several files, share several files, add files while a scan runs
+
 ### Done in 1.1.0
 
-* [x] Full interactive spectrogram
-* [x] Pinch-to-zoom
-* [x] Spectrogram panning
-* [x] Frequency cursor
-* [x] Per-channel spectrum
-* [x] Stereo correlation
-* [x] Joint-stereo artifact analysis
-* [x] Additional encoder fingerprints
-* [x] More detailed spectral visualizations
+* [x] Full interactive spectrogram (pinch, pan, cursor), per-channel spectrum, stereo and joint-stereo analysis, more encoder fingerprints
 
 ### Ideas
 
@@ -698,6 +729,8 @@ The application exposes the measurements behind the verdict rather than hiding t
 * [ ] Fingerprints for Apple AAC, FDK-AAC and Fraunhofer MP3
 * [ ] Multichannel (5.1 / 7.1) stereo-style analysis
 * [ ] Export the spectrogram as an image
+* [ ] Compare two files (original vs. suspect)
+* [ ] Watch a folder and scan new files automatically
 
 ---
 
