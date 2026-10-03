@@ -28,6 +28,7 @@ import kotlinx.coroutines.withContext
 sealed interface Screen {
     data object Home : Screen
     data class Result(val report: AnalysisReport) : Screen
+    data class Spectrogram(val report: AnalysisReport) : Screen
     data object Batch : Screen
     data object History : Screen
 }
@@ -69,7 +70,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun back() {
-        screen = when (screen) {
+        screen = when (val current = screen) {
+            is Screen.Spectrogram -> Screen.Result(current.report)
             is Screen.Result -> if (batchResults.isNotEmpty()) Screen.Batch else Screen.Home
             else -> Screen.Home
         }

@@ -46,12 +46,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.spectroflac.analysis.AnalysisReport
+import com.spectroflac.analysis.StereoAnalysis
 import com.spectroflac.analysis.Verdict
 import com.spectroflac.ui.components.FindingRow
 import com.spectroflac.ui.components.HeadlineSpec
 import com.spectroflac.ui.components.KeyValueRow
 import com.spectroflac.ui.components.SectionCard
+import com.spectroflac.ui.components.CorrelationChart
 import com.spectroflac.ui.components.SpectrogramStrip
+import com.spectroflac.ui.components.SpectrumChart
 import com.spectroflac.ui.components.VerdictBadge
 import com.spectroflac.ui.components.color
 import com.spectroflac.ui.glass.GlassPanel
@@ -64,6 +67,7 @@ import com.spectroflac.util.formatDuration
 import com.spectroflac.util.formatHz
 import com.spectroflac.util.formatTimestamp
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 @Composable
@@ -72,6 +76,7 @@ fun ResultScreen(
     onBack: () -> Unit,
     onShare: () -> Unit,
     onReanalyse: () -> Unit,
+    onOpenSpectrogram: () -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -106,16 +111,31 @@ fun ResultScreen(
         report.spectrogram?.let { preview ->
             item {
                 SectionCard("Spectrogram", icon = Icons.Filled.GraphicEq) {
-                    SpectrogramStrip(preview)
+                    SpectrogramStrip(
+                        preview,
+                        onClick = if (report.spectrogramFull != null) onOpenSpectrogram else null,
+                    )
                     Spacer(Modifier.height(10.dp))
                     Text(
                         text = "Time runs left to right, frequency bottom to top, up to " +
                             "${formatHz(preview.sampleRate / 2.0)}. A flat dark band across the top " +
-                            "is what a lossy encoder leaves behind.",
+                            "is what a lossy encoder leaves behind." +
+                            if (report.spectrogramFull != null) " Tap it to zoom, pan and read exact values." else "",
                         style = MaterialTheme.typography.bodySmall,
                         color = SpectroColors.TextTertiary,
                     )
                 }
+            }
+        }
+
+        if (report.spectrogram == null && report.technical != null) {
+            item {
+                Text(
+                    text = "The spectrogram and spectrum charts are not kept in the history. " +
+                        "Re-analyse the file to see them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SpectroColors.TextTertiary,
+                )
             }
         }
 
@@ -176,6 +196,72 @@ fun ResultScreen(
                             color = SpectroColors.TextTertiary,
                             modifier = Modifier.padding(bottom = 6.dp),
                         )
+                    }
+                }
+            }
+        }
+
+        report.spectrumCurves?.let { curves ->
+            item {
+                SectionCard("Spectrum", icon = Icons.Filled.GraphicEq) {
+                    SpectrumChart(curves, report.spectral?.cutoffHz?.takeIf { report.spectral.hasBrickWall })
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "Loudest level reached in every frequency across the whole track (line), " +
+                            "and the average (thin line). Switch channels on to compare them.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SpectroColors.TextTertiary,
+                    )
+                }
+            }
+        }
+
+        report.stereo?.takeUnless { report.dynamics?.dualMono == true }?.let { st ->
+            item {
+                SectionCard("Stereo", icon = Icons.Filled.Tune) {
+                    KeyValueRow(
+                        "Correlation",
+                        String.format(Locale.US, "%.2f · %s", st.correlation, StereoAnalysis.describeCorrelation(st.correlation)),
+                        if (st.correlation < 0.0) SpectroColors.Fake else SpectroColors.TextPrimary,
+                    )
+                    KeyValueRow(
+                        "Balance",
+                        if (abs(st.balanceDb) < 0.5) "centred" else
+                            String.format(Locale.US, "%.1f dB %s", abs(st.balanceDb), if (st.balanceDb > 0) "left" else "right"),
+                    )
+                    KeyValueRow("Side vs mid", formatDb(st.widthDb))
+                    KeyValueRow("Mid level", formatDbfs(st.midRmsDbfs))
+                    KeyValueRow("Side level", formatDbfs(st.sideRmsDbfs))
+                    if (st.negativeRatio > 0.0) {
+                        KeyValueRow("Out of phase", String.format(Locale.US, "%.0f %% of the track", st.negativeRatio * 100))
+                    }
+                    report.jointStereo?.let { j ->
+                        KeyValueRow(
+                            "Joint stereo",
+                            if (j.suspected) "artifacts suspected" else "no artifacts",
+                            if (j.suspected) SpectroColors.Suspicious else SpectroColors.Genuine,
+                        )
+                    }
+                    if (st.timeline.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        CorrelationChart(st.timeline)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Left/right correlation over time. Bars below the line are out of phase.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SpectroColors.TextTertiary,
+                        )
+                    }
+                    report.jointStereo?.let { j ->
+                        Spacer(Modifier.height(10.dp))
+                        j.reasoning.forEach { line ->
+                            Text(
+                                text = "• $line",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SpectroColors.TextTertiary,
+                                modifier = Modifier.padding(bottom = 6.dp),
+                            )
+                        }
                     }
                 }
             }

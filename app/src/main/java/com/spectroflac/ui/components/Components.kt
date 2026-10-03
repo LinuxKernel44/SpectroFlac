@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -258,21 +259,35 @@ fun GlassProgress(progress: Float, modifier: Modifier = Modifier) {
 
 /**
  * The compact spectrogram kept from the analysis pass: time across, frequency up.
- * It is a preview of the full interactive view planned for a later version.
+ * Tapping it (when [onClick] is given) opens the full interactive view.
  */
 @Composable
-fun SpectrogramStrip(preview: SpectrogramPreview, modifier: Modifier = Modifier) {
+fun SpectrogramStrip(preview: SpectrogramPreview, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val bitmap = remember(preview) { preview.toImageBitmap() }
-    Image(
-        bitmap = bitmap,
-        contentDescription = "Spectrogram of the analysed track",
-        modifier = modifier
-            .fillMaxWidth()
-            .height(140.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .graphicsLayer { scaleY = -1f },
-        contentScale = ContentScale.FillBounds,
-    )
+    Box(modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(16.dp))) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = "Spectrogram of the analysed track",
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer { scaleY = -1f }
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            contentScale = ContentScale.FillBounds,
+        )
+        if (onClick != null) {
+            Text(
+                text = "Tap to explore",
+                style = MaterialTheme.typography.labelSmall,
+                color = SpectroColors.TextPrimary,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            )
+        }
+    }
 }
 
 private fun SpectrogramPreview.toImageBitmap(): ImageBitmap {
@@ -280,13 +295,16 @@ private fun SpectrogramPreview.toImageBitmap(): ImageBitmap {
     for (x in 0 until columns) {
         for (y in 0 until bands) {
             val level = data[x * bands + y].toInt() and 0xFF
-            pixels[y * columns + x] = spectrogramColor(level)
+            pixels[y * columns + x] = SpectrogramLut[level]
         }
     }
     val bitmap = android.graphics.Bitmap.createBitmap(columns, bands, android.graphics.Bitmap.Config.ARGB_8888)
     bitmap.setPixels(pixels, 0, columns, 0, 0, columns, bands)
     return bitmap.asImageBitmap()
 }
+
+/** The spectrogram palette, one ARGB value per stored level. */
+val SpectrogramLut = IntArray(256) { spectrogramColor(it) }
 
 /** Black → indigo → violet → cyan → white, so a brick-wall cut is unmistakable. */
 private fun spectrogramColor(level: Int): Int {

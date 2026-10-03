@@ -28,6 +28,7 @@ import com.spectroflac.ui.screens.BatchScreen
 import com.spectroflac.ui.screens.HistoryScreen
 import com.spectroflac.ui.screens.HomeScreen
 import com.spectroflac.ui.screens.ResultScreen
+import com.spectroflac.ui.screens.SpectrogramScreen
 import com.spectroflac.ui.theme.SpectroFlacTheme
 import kotlinx.coroutines.launch
 
@@ -120,6 +121,12 @@ fun SpectroFlacApp(viewModel: MainViewModel) {
                         )
                     },
                     onReanalyse = { viewModel.reanalyse(screen.report) },
+                    onOpenSpectrogram = { viewModel.navigate(Screen.Spectrogram(screen.report)) },
+                )
+
+                is Screen.Spectrogram -> SpectrogramScreen(
+                    report = screen.report,
+                    onBack = viewModel::back,
                 )
 
                 is Screen.Batch -> BatchScreen(
