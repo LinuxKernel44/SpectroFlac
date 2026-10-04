@@ -19,6 +19,9 @@
   <a href="https://github.com/LinuxKernel44/SpectroFlac">
     <img src="https://img.shields.io/github/stars/LinuxKernel44/SpectroFlac?style=for-the-badge&logo=github" alt="Stars">
   </a>
+  <a href="#-install">
+    <img src="https://img.shields.io/badge/Get%20it%20on-Obtainium-5E35B1?style=for-the-badge" alt="Get it on Obtainium">
+  </a>
   <img src="https://img.shields.io/badge/Android-10%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android">
   <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white" alt="Kotlin">
   <img src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white" alt="Jetpack Compose">
@@ -31,6 +34,28 @@
   <img src="https://img.shields.io/badge/100%25-Offline-success?style=flat-square" alt="Offline">
   <img src="https://img.shields.io/badge/No-Network-success?style=flat-square" alt="No network access">
 </p>
+
+---
+
+## 📥 Install
+
+SpectroFlac is not on Google Play. Pick one of these:
+
+**Obtainium (recommended: updates itself from GitHub releases)**
+
+1. Install [Obtainium](https://github.com/ImranR98/Obtainium/releases) on your phone.
+2. In Obtainium tap *Add App* and paste:
+   ```
+   https://github.com/LinuxKernel44/SpectroFlac
+   ```
+3. Tap *Add*, then *Install*. Obtainium will tell you when a new release is out.
+
+**Manual APK**
+
+1. Download `SpectroFlac-<version>.apk` from the [latest release](https://github.com/LinuxKernel44/SpectroFlac/releases/latest).
+2. Open it and allow *Install unknown apps* for your browser or file manager when Android asks.
+
+Releases are signed with the same key every time, so an update installed over either route keeps your history. If you still have v1.0.0, uninstall it first: it used an older key and Android refuses to update across keys.
 
 ---
 
