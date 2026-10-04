@@ -272,10 +272,10 @@ Requires `keystore.properties` at the project root (gitignored, never committed 
 `keyPassword`). Without it, `assembleRelease` still produces an APK, just unsigned — the script
 refuses to publish that (`apksigner verify` gate).
 
-**Two signing keys exist.** v1.0.0 was signed with `~/.spectroflac/spectroflac.jks` (password not on this
+**Two signing keys exist.** v1.0.0 was signed with `/home/david/dev/android/.spectroflac/spectroflac.jks` (password not on this
 machine any more, never recovered). v1.1.0 onward is signed with a **new** key,
-`~/.spectroflac/spectroflac-v2.jks` (alias `spectroflac`, created 2026-10-03 at the user's explicit request;
-its password is in `~/spectroflac-keystore-password.txt`, outside the repo, and `keystore.properties` points at
+`/home/david/dev/android/.spectroflac/spectroflac-v2.jks` (alias `spectroflac`, created 2026-10-03 at the user's explicit request;
+its password is in `/home/david/dev/android/.spectroflac/spectroflac-keystore-password.txt`, outside the repo, and `keystore.properties` points at
 it). Android refuses to update a v1.0.0 install with a v1.1.0 APK, so v1.0.0 must be uninstalled first — the
 release notes say so. Keep both keystores; releases from now on must use the v2 key.
 
